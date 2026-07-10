@@ -22,6 +22,10 @@ Thumbs.db
 # Temporary files
 *.log
 
+# Generated results
+results/figures/*
+results/tables/*
+
 .agents/
 
 .codex/
