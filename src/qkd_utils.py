@@ -14,12 +14,15 @@ try:
         prepare_bb84_state,
         random_bases,
         random_bits,
+        run_bb84_protocol_with_eve,
         run_bb84_protocol,
+        run_bb84_round_with_eve,
         run_bb84_round,
         sift_keys,
     )
     from plots import plot_keep_discard
     from utils import save_table
+    from attacks import choose_eve_basis, eve_intercept_resend, eve_measure
 except ImportError:
     from .bb84 import (
         compute_qber,
@@ -27,12 +30,15 @@ except ImportError:
         prepare_bb84_state,
         random_bases,
         random_bits,
+        run_bb84_protocol_with_eve,
         run_bb84_protocol,
+        run_bb84_round_with_eve,
         run_bb84_round,
         sift_keys,
     )
     from .plots import plot_keep_discard
     from .utils import save_table
+    from .attacks import choose_eve_basis, eve_intercept_resend, eve_measure
 
 __all__ = [
     "random_bits",
@@ -41,8 +47,13 @@ __all__ = [
     "measure_bb84_state",
     "run_bb84_round",
     "run_bb84_protocol",
+    "run_bb84_round_with_eve",
+    "run_bb84_protocol_with_eve",
     "sift_keys",
     "compute_qber",
     "plot_keep_discard",
     "save_table",
+    "choose_eve_basis",
+    "eve_measure",
+    "eve_intercept_resend",
 ]
