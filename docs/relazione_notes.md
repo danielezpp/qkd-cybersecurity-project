@@ -751,3 +751,268 @@ Questa unità può essere usata nella relazione per:
 12. Perché CHSH rafforza l’interpretazione fisica di E91?
 13. In che senso le correlazioni entangled non sono spiegabili classicamente?
 14. Qual è il collegamento tra entanglement, E91 e sicurezza della QKD?
+
+## Unità 4 — Confronto BB84 vs E91
+
+### Obiettivo dell’unità
+
+L’obiettivo dell’Unità 4 è confrontare i protocolli BB84 ed E91 usando metriche comuni e risultati già prodotti nelle unità precedenti.
+
+Dopo avere simulato separatamente BB84 ideale, BB84 con Eve intercept-resend ed E91 ideale con verifica CHSH, questa unità raccoglie i risultati in un notebook unico di confronto.
+
+Il confronto considera sia aspetti quantitativi, come QBER e sifted key rate, sia aspetti qualitativi, come robustezza, sicurezza, costo sperimentale e scalabilità.
+
+### File coinvolti
+
+I file principali coinvolti nell’Unità 4 sono:
+
+- `src/metrics.py`
+- `notebooks/04_comparison_and_results.ipynb`
+- `results/tables/comparison_summary.csv`
+- `results/tables/repeated_experiments.csv`
+- `results/tables/repeated_experiments_summary.csv`
+- `results/figures/comparison_qber.png`
+- `results/figures/comparison_sifted_key_rate.png`
+- `results/figures/repeated_qber_mean.png`
+- `results/figures/repeated_key_rate_mean.png`
+
+Il file `metrics.py` contiene funzioni comuni per calcolare metriche confrontabili tra protocolli QKD.
+
+Il notebook `04_comparison_and_results.ipynb` raccoglie le simulazioni già sviluppate, calcola le metriche comuni e produce tabelle e grafici di confronto.
+
+### Metriche comuni introdotte
+
+Per confrontare BB84 ed E91 è stato creato il modulo `metrics.py`.
+
+Le metriche principali sono:
+
+- numero totale di round;
+- numero di round mantenuti dopo il sifting;
+- numero di round scartati;
+- lunghezza della chiave sifted;
+- sifted key rate;
+- QBER;
+- soglia QBER;
+- accettazione o rifiuto della chiave.
+
+Il sifted key rate è definito come:
+
+`sifted_key_rate = lunghezza chiave sifted / numero round totali`
+
+La decisione di accettazione della chiave è modellata tramite una soglia QBER semplificata:
+
+`qber_threshold = 0.11`
+
+Se il QBER è minore o uguale alla soglia, la chiave viene considerata accettata. Se il QBER supera la soglia, la chiave viene rifiutata.
+
+Questa soglia non sostituisce una procedura completa di information reconciliation e privacy amplification, ma serve come criterio operativo semplificato per confrontare gli scenari simulati.
+
+### Funzioni implementate in `metrics.py`
+
+Il file `metrics.py` contiene le seguenti funzioni:
+
+- `count_kept_rounds(results)`;
+- `count_discarded_rounds(results)`;
+- `compute_sifted_key_length(alice_key)`;
+- `compute_sifted_key_rate(alice_key, n_rounds)`;
+- `decide_key_acceptance(qber, qber_threshold=0.11)`;
+- `summarize_qkd_results(protocol_name, results, alice_key, bob_key, qber, qber_threshold=0.11)`.
+
+Queste funzioni non usano Qiskit, pandas o matplotlib. Servono solo a calcolare metriche comuni a partire dai risultati delle simulazioni.
+
+### Scenari confrontati
+
+Nel notebook di confronto sono stati considerati tre scenari principali:
+
+1. BB84 ideale;
+2. BB84 con Eve intercept-resend sempre attiva;
+3. E91 ideale.
+
+Per E91 è stato richiamato anche il risultato del test CHSH, come indicatore della presenza di correlazioni quantistiche non classiche.
+
+### BB84 ideale
+
+Nel caso BB84 ideale, Alice prepara singoli qubit in basi casuali e Bob li misura in basi casuali.
+
+Dopo il sifting vengono mantenuti solo i round in cui Alice e Bob hanno scelto la stessa base.
+
+In assenza di Eve e rumore, i bit mantenuti coincidono e il QBER è nullo.
+
+Questo scenario rappresenta il riferimento ideale del protocollo prepare-and-measure.
+
+### BB84 con Eve intercept-resend
+
+Nel caso BB84 con Eve, l’attaccante intercetta i qubit inviati da Alice, li misura in una base scelta casualmente e reinvia a Bob nuovi qubit coerenti con il risultato ottenuto.
+
+Quando Eve sceglie una base diversa da quella di Alice, la sua misura può disturbare lo stato quantistico. Questo disturbo può produrre errori nella chiave sifted e quindi aumentare il QBER.
+
+Nel confronto, BB84 con Eve mostra un QBER significativamente maggiore rispetto al caso ideale e può superare la soglia di accettazione scelta.
+
+Questo scenario mostra il ruolo del QBER come indicatore operativo della presenza di un attacco o di disturbo nel canale.
+
+### E91 ideale
+
+Nel caso E91 ideale, Alice e Bob misurano qubit appartenenti a coppie entangled nello stato di Bell `|Φ+⟩`.
+
+Quando scelgono basi compatibili, i risultati sono correlati e possono essere usati per costruire una chiave condivisa.
+
+In assenza di rumore e attacchi, il QBER è nullo.
+
+E91 si distingue da BB84 perché la chiave nasce dalle correlazioni di uno stato entangled, non dalla preparazione diretta di singoli qubit da parte di Alice.
+
+### Ruolo di CHSH nel confronto
+
+Il test CHSH non è una metrica di lunghezza della chiave, ma una verifica della natura quantistica delle correlazioni usate in E91.
+
+Nel notebook viene richiamato il parametro `S` di CHSH.
+
+Per una teoria classica locale vale:
+
+`|S| ≤ 2`
+
+Per uno stato entangled ideale la meccanica quantistica può produrre valori vicini a:
+
+`2√2 ≈ 2.828`
+
+Nel confronto, il valore ottenuto risulta maggiore di `2`, mostrando una violazione del limite classico.
+
+Questa violazione rafforza l’interpretazione di E91 come protocollo basato su correlazioni quantistiche non classiche.
+
+### Esperimenti ripetuti su più seed
+
+Per rendere il confronto più robusto, gli scenari principali sono stati ripetuti più volte con seed diversi.
+
+Questo permette di osservare non solo una singola simulazione, ma il comportamento medio delle metriche.
+
+Per ogni esperimento sono stati calcolati:
+
+- QBER;
+- sifted key rate;
+- lunghezza della chiave sifted;
+- accettazione o rifiuto della chiave.
+
+Successivamente sono state calcolate media e deviazione standard per ciascun protocollo.
+
+Questa analisi permette di valutare la stabilità statistica dei risultati.
+
+### Risultati qualitativi del confronto
+
+Dal confronto emergono alcuni punti principali:
+
+- BB84 ideale ed E91 ideale hanno QBER nullo in assenza di rumore e attacchi;
+- BB84 con Eve presenta un aumento del QBER;
+- il sifted key rate è mediamente vicino a 0.5 quando Alice e Bob scelgono casualmente tra due basi;
+- la presenza di Eve può portare al rifiuto della chiave se il QBER supera la soglia scelta;
+- E91 richiede una sorgente entangled, quindi è più esigente dal punto di vista sperimentale;
+- E91 permette però di collegare la QKD alla verifica di correlazioni quantistiche tramite CHSH.
+
+### Robustezza
+
+Nel confronto attuale, la robustezza è valutata principalmente tramite il QBER.
+
+BB84 è sensibile all’attacco intercept-resend: la misura di Eve può introdurre errori rilevabili.
+
+E91, nel caso ideale, presenta QBER nullo e consente anche di verificare la natura quantistica delle correlazioni tramite CHSH.
+
+Una valutazione più completa della robustezza richiederà l’introduzione di rumore, decoerenza e modelli di canale.
+
+### Sicurezza
+
+Nel caso BB84, la sicurezza operativa è collegata al fatto che un attaccante che misura in una base sbagliata altera lo stato e aumenta il QBER.
+
+Nel caso E91, la sicurezza è collegata alle correlazioni entangled. La violazione CHSH mostra che tali correlazioni non possono essere spiegate da un modello classico locale.
+
+Nel progetto, questa differenza viene usata per distinguere il ruolo del QBER in BB84 e il ruolo delle correlazioni quantistiche in E91.
+
+### Costo computazionale e sperimentale
+
+Dal punto di vista della simulazione, BB84 usa circuiti a un qubit, mentre E91 usa circuiti a due qubit.
+
+Dal punto di vista sperimentale, BB84 è più semplice perché richiede la preparazione e misura di singoli qubit.
+
+E91 è più complesso perché richiede:
+
+- sorgenti entangled;
+- distribuzione di coppie entangled;
+- misure correlate tra Alice e Bob;
+- eventuale verifica CHSH.
+
+Quindi, anche se nella simulazione la differenza computazionale può essere contenuta, dal punto di vista sperimentale E91 è più oneroso.
+
+### Scalabilità
+
+In questa unità la scalabilità è discussa solo in modo preliminare.
+
+Le metriche utili per studiarla sono:
+
+- numero di round;
+- lunghezza della chiave sifted;
+- sifted key rate;
+- QBER medio;
+- stabilità delle metriche su più seed;
+- tempo di simulazione, eventualmente da aggiungere in una fase successiva.
+
+Una valutazione più significativa della scalabilità richiederà l’introduzione di rumore, perdita o distanza, che saranno oggetto dell’unità successiva.
+
+### Output prodotti
+
+L’Unità 4 produce le seguenti tabelle:
+
+- `results/tables/comparison_summary.csv`;
+- `results/tables/repeated_experiments.csv`;
+- `results/tables/repeated_experiments_summary.csv`.
+
+Produce inoltre i seguenti grafici:
+
+- `results/figures/comparison_qber.png`;
+- `results/figures/comparison_sifted_key_rate.png`;
+- `results/figures/repeated_qber_mean.png`;
+- `results/figures/repeated_key_rate_mean.png`.
+
+Questi output saranno utili nella relazione finale per mostrare il confronto tra protocolli in forma sintetica.
+
+### Limiti dell’Unità 4
+
+Il confronto resta ancora ideale o semi-ideale.
+
+In particolare, non sono ancora inclusi:
+
+- rumore fisico del canale;
+- decoerenza;
+- amplitude damping;
+- attenuazione in fibra;
+- distanza;
+- inefficienza dei rivelatori;
+- privacy amplification;
+- information reconciliation;
+- autenticazione del canale classico.
+
+Inoltre, il confronto con Eve è stato applicato esplicitamente solo a BB84. Per E91 è stato invece usato il test CHSH come verifica delle correlazioni quantistiche.
+
+### Elementi da usare nella relazione finale
+
+Questa unità può essere usata nella relazione per:
+
+- presentare una tabella comparativa tra BB84 ed E91;
+- confrontare QBER e sifted key rate;
+- discutere l’effetto dell’attacco intercept-resend su BB84;
+- discutere il ruolo di CHSH in E91;
+- introdurre una soglia QBER come criterio semplificato di accettazione;
+- analizzare la stabilità statistica tramite esperimenti ripetuti;
+- discutere costo sperimentale e scalabilità;
+- preparare l’introduzione del rumore e della decoerenza.
+
+### Possibili domande orali
+
+1. Quali metriche sono state usate per confrontare BB84 ed E91?
+2. Che cos’è il sifted key rate?
+3. Perché BB84 ideale ha QBER nullo?
+4. Perché BB84 con Eve ha QBER più alto?
+5. Cosa rappresenta la soglia QBER?
+6. Perché la chiave può essere accettata o rifiutata?
+7. Qual è la differenza tra QBER e sifted key rate?
+8. Perché E91 è più complesso sperimentalmente di BB84?
+9. Che ruolo ha CHSH nel confronto?
+10. Perché il confronto attuale non è ancora sufficiente per parlare di scalabilità reale?
+11. Perché è utile ripetere gli esperimenti su più seed?
+12. Quali aspetti richiedono l’introduzione del rumore?
