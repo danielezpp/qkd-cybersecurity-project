@@ -448,3 +448,306 @@ Questa unità può essere usata nella relazione per:
 8. Perché la misura quantistica rende rilevabile un’intercettazione?
 9. Perché la simulazione non restituisce sempre esattamente QBER = 0.25?
 10. In che modo questa unità prepara il confronto con E91?
+
+## Unità 3 — E91 ideale, entanglement e verifica CHSH
+
+### Obiettivo dell’unità
+
+L’obiettivo dell’Unità 3 è introdurre il protocollo E91 in condizioni ideali e mostrarne la differenza concettuale rispetto a BB84.
+
+Mentre BB84 è un protocollo di tipo prepare-and-measure, in cui Alice prepara direttamente uno stato quantistico e Bob lo misura, E91 è basato sull’entanglement. Alice e Bob ricevono ciascuno un qubit appartenente a una coppia entangled e costruiscono la chiave a partire dalle correlazioni tra i risultati delle loro misure.
+
+L’unità ha quindi due obiettivi principali:
+
+- simulare una versione didattica di E91 ideale;
+- verificare, tramite il test CHSH, che le correlazioni prodotte dallo stato entangled non sono spiegabili classicamente.
+
+### File coinvolti
+
+I file principali coinvolti nell’Unità 3 sono:
+
+- `src/e91.py`
+- `notebooks/03_e91_basic.ipynb`
+- `results/tables/e91_ideal_results.csv`
+- `results/figures/e91_ideal_keep_discard.png`
+
+Il file `e91.py` contiene la logica del protocollo E91 ideale e le funzioni per la verifica CHSH.
+
+Il notebook `03_e91_basic.ipynb` mostra in modo narrativo il funzionamento del protocollo E91, la preparazione dello stato entangled, il sifting, il calcolo del QBER e l’estensione CHSH.
+
+### Differenza concettuale tra BB84 ed E91
+
+Nel protocollo BB84 Alice prepara singoli qubit in basi diverse e Bob li misura. La sicurezza è collegata al fatto che una misura effettuata da Eve in una base sbagliata può disturbare lo stato e aumentare il QBER.
+
+Nel protocollo E91, invece, la chiave nasce da coppie entangled condivise tra Alice e Bob. Alice misura un qubit della coppia e Bob misura l’altro. Quando scelgono basi compatibili, nel caso ideale ottengono risultati correlati.
+
+Quindi:
+
+- BB84: Alice prepara e Bob misura;
+- E91: Alice e Bob misurano qubit entangled;
+- BB84 rileva l’intercettazione tramite aumento del QBER;
+- E91 collega la generazione della chiave alle correlazioni quantistiche prodotte dall’entanglement.
+
+### Stato entangled utilizzato
+
+Nella simulazione è stato usato lo stato di Bell:
+
+`|Φ+⟩ = (|00⟩ + |11⟩) / √2`
+
+Questo stato non descrive due qubit indipendenti, ma un sistema bipartito entangled. La misura di un qubit è correlata alla misura dell’altro.
+
+Nel circuito Qiskit, lo stato `|Φ+⟩` viene preparato partendo da `|00⟩` e applicando:
+
+- un gate `H` sul primo qubit;
+- un gate `CX` con controllo sul primo qubit e target sul secondo.
+
+La sequenza concettuale è:
+
+`|00⟩ → H sul qubit 0 → sovrapposizione → CX → (|00⟩ + |11⟩) / √2`
+
+### Strumenti Qiskit utilizzati
+
+In questa unità sono stati usati strumenti essenziali di Qiskit:
+
+- `QuantumCircuit(2, 2)`;
+- gate `H`;
+- gate `CX`;
+- gate `RY`;
+- `measure`;
+- `AerSimulator`.
+
+Il gate `H` e il gate `CX` sono usati per preparare lo stato entangled.
+
+Il gate `RY` viene invece usato nella parte CHSH per simulare misure lungo direzioni ruotate.
+
+### Funzioni principali implementate in `e91.py`
+
+Le funzioni principali per la simulazione E91 ideale sono:
+
+- `check_basis(basis)`;
+- `random_bases(n, seed=None)`;
+- `prepare_bell_phi_plus(circuit)`;
+- `measure_e91_qubit(circuit, basis, qubit, cbit)`;
+- `run_e91_round(alice_basis, bob_basis)`;
+- `run_e91_protocol(n_rounds, seed=None)`;
+- `sift_keys(results)`;
+- `compute_qber(alice_key, bob_key)`.
+
+Le funzioni seguono lo stesso stile didattico adottato per BB84:
+
+- codice semplice;
+- cicli espliciti;
+- nessun DataFrame nei file sorgente;
+- nessun grafico nei file sorgente;
+- risultati restituiti come lista di dizionari;
+- rappresentazione tabellare gestita nel notebook.
+
+### Simulazione E91 ideale
+
+Nel protocollo E91 ideale simulato:
+
+1. viene preparata una coppia entangled nello stato `|Φ+⟩`;
+2. Alice sceglie casualmente una base di misura;
+3. Bob sceglie casualmente una base di misura;
+4. Alice misura il qubit 0;
+5. Bob misura il qubit 1;
+6. si mantiene il round solo se Alice e Bob hanno scelto la stessa base;
+7. sui round mantenuti si costruiscono le chiavi sifted;
+8. si calcola il QBER.
+
+Nel caso ideale, quando Alice e Bob misurano nella stessa base, i risultati sono correlati. Per questo motivo il QBER ottenuto è nullo.
+
+### Sifting e QBER
+
+Anche in E91 si applica una procedura di sifting: Alice e Bob confrontano pubblicamente le basi usate e mantengono solo i round in cui le basi coincidono.
+
+Dopo il sifting, si confrontano le due chiavi:
+
+- chiave di Alice;
+- chiave di Bob.
+
+Il QBER misura la frazione di bit diversi tra le due chiavi sifted.
+
+Nel caso E91 ideale simulato si ottiene:
+
+`QBER = 0.0`
+
+Questo conferma che, in assenza di rumore e attacchi, le misure compatibili su coppie entangled producono risultati coerenti per la generazione della chiave.
+
+### Output prodotti
+
+L’Unità 3 produce due output principali:
+
+- tabella CSV dei round E91 ideali:
+  `results/tables/e91_ideal_results.csv`
+
+- grafico dei round mantenuti e scartati:
+  `results/figures/e91_ideal_keep_discard.png`
+
+La tabella contiene, per ogni round:
+
+- numero del round;
+- base scelta da Alice;
+- base scelta da Bob;
+- bit misurato da Alice;
+- bit misurato da Bob;
+- informazione `keep`.
+
+Il grafico mostra il numero di round mantenuti e scartati dopo il confronto delle basi.
+
+### Estensione CHSH
+
+Dopo la simulazione E91 ideale è stata aggiunta una verifica CHSH per mostrare che le correlazioni generate dallo stato entangled non sono spiegabili tramite un modello classico locale.
+
+Il test CHSH considera due possibili impostazioni di misura per Alice:
+
+- `a`;
+- `a'`.
+
+e due possibili impostazioni di misura per Bob:
+
+- `b`;
+- `b'`.
+
+Per ogni coppia di impostazioni si calcola una correlazione:
+
+- `E(a,b)`;
+- `E(a,b')`;
+- `E(a',b)`;
+- `E(a',b')`.
+
+Queste correlazioni vengono combinate nel parametro:
+
+`S = E(a,b) + E(a,b') + E(a',b) - E(a',b')`
+
+Per una teoria classica locale vale:
+
+`|S| ≤ 2`
+
+La meccanica quantistica, usando uno stato entangled ideale, può invece raggiungere:
+
+`|S| = 2√2 ≈ 2.828`
+
+Nel notebook è stato verificato che il valore ottenuto supera il limite classico `2`, mostrando quindi una violazione della disuguaglianza CHSH.
+
+### Funzioni CHSH implementate
+
+Nel file `e91.py` sono state aggiunte le seguenti funzioni:
+
+- `measure_in_angle(circuit, angle, qubit, cbit)`;
+- `run_chsh_counts(angle_a, angle_b, shots=1000, seed=None)`;
+- `compute_correlation_from_counts(counts)`;
+- `run_chsh_experiment(shots=1000, seed=None)`.
+
+La funzione `measure_in_angle` applica una rotazione `RY(-angle)` prima della misura standard. In questo modo una misura lungo una direzione ruotata viene ricondotta a una misura nella base computazionale.
+
+La funzione `run_chsh_counts` prepara lo stato entangled, misura Alice e Bob secondo due angoli scelti e restituisce i conteggi.
+
+La funzione `compute_correlation_from_counts` associa ai bit i valori:
+
+- `0 → +1`;
+- `1 → -1`.
+
+Poi calcola la media dei prodotti tra il risultato di Alice e quello di Bob.
+
+La funzione `run_chsh_experiment` calcola le quattro correlazioni CHSH e restituisce il parametro `S`.
+
+### Interpretazione teorica di CHSH
+
+La verifica CHSH serve a distinguere correlazioni classiche e correlazioni quantistiche.
+
+In una descrizione classica locale si assume che i risultati delle misure siano già predeterminati, anche se non conosciuti. In questo caso si può dimostrare che il parametro CHSH non può superare `2` in valore assoluto.
+
+La meccanica quantistica non richiede invece che osservabili incompatibili abbiano valori simultaneamente definiti prima della misura. Per uno stato entangled, le correlazioni tra le misure di Alice e Bob possono quindi superare il limite classico.
+
+Il risultato `|S| > 2` indica che le correlazioni osservate non sono compatibili con un modello classico locale.
+
+### Collegamento tra E91 e CHSH
+
+Nel progetto, CHSH non viene usato direttamente per calcolare la chiave, ma serve a rafforzare l’interpretazione fisica di E91.
+
+La simulazione E91 ideale mostra che Alice e Bob possono ottenere una chiave condivisa dai risultati correlati delle misure su coppie entangled.
+
+La verifica CHSH mostra invece che tali correlazioni non sono semplicemente classiche, ma derivano dalla natura entangled dello stato quantistico.
+
+Questa distinzione è importante perché E91 è un protocollo entanglement-based: la presenza di correlazioni quantistiche è parte centrale della sua interpretazione.
+
+### Collegamento con il materiale del corso
+
+Questa unità utilizza direttamente concetti fondamentali del corso:
+
+- qubit;
+- stati di base `|0⟩` e `|1⟩`;
+- sovrapposizione;
+- prodotto tensoriale;
+- sistemi bipartiti;
+- gate unitari;
+- gate `H`;
+- gate `CX`;
+- entanglement;
+- stati di Bell;
+- misura quantistica;
+- basi di misura;
+- probabilità di misura;
+- correlazioni quantistiche.
+
+La parte specifica su E91, QKD entanglement-based e test CHSH rappresenta un’integrazione applicativa collegata al progetto finale.
+
+### Importanza per la discussione orale
+
+Questa unità è importante per l’esame orale perché permette di distinguere chiaramente BB84 ed E91.
+
+Un punto efficace da sottolineare è:
+
+Nel BB84 la sicurezza è legata al disturbo introdotto da una misura non autorizzata su stati non ortogonali. Nell’E91, invece, il protocollo si basa sulle correlazioni quantistiche di coppie entangled. La verifica CHSH mostra che tali correlazioni superano il limite delle teorie classiche locali.
+
+Quindi E91 consente di collegare la Quantum Key Distribution non solo alla misura quantistica, ma anche all’entanglement e alla non località quantistica.
+
+### Limiti dell’Unità 3
+
+L’Unità 3 considera E91 in condizioni ideali.
+
+Non sono ancora presenti:
+
+- Eve applicata a E91;
+- rumore del canale;
+- decoerenza;
+- amplitude damping;
+- attenuazione in fibra;
+- confronto quantitativo completo BB84/E91;
+- analisi della chiave in presenza di imperfezioni sperimentali.
+
+Inoltre, la verifica CHSH è simulata in un contesto ideale e didattico. In un esperimento reale, la stima delle correlazioni richiederebbe attenzione a perdite, rumore, inefficienze dei rivelatori e scelta casuale delle basi.
+
+### Elementi da usare nella relazione finale
+
+Questa unità può essere usata nella relazione per:
+
+- introdurre E91 come protocollo entanglement-based;
+- spiegare la differenza rispetto a BB84;
+- mostrare la preparazione dello stato di Bell `|Φ+⟩`;
+- spiegare il ruolo del gate `H` e del gate `CX`;
+- descrivere il sifting in E91;
+- mostrare che nel caso ideale il QBER è nullo;
+- introdurre le correlazioni quantistiche;
+- presentare il test CHSH;
+- spiegare il limite classico `|S| ≤ 2`;
+- mostrare la violazione CHSH come firma delle correlazioni quantistiche;
+- preparare il confronto tra BB84 ed E91.
+
+### Possibili domande orali
+
+1. Qual è la differenza principale tra BB84 ed E91?
+2. Che cos’è uno stato entangled?
+3. Come si prepara lo stato di Bell `|Φ+⟩` con Qiskit?
+4. Qual è il ruolo del gate `H` nella preparazione dello stato di Bell?
+5. Qual è il ruolo del gate `CX`?
+6. Perché in E91 Alice e Bob possono ottenere bit correlati?
+7. Come funziona il sifting in E91?
+8. Perché nel caso ideale il QBER è nullo?
+9. Che cosa misura il parametro CHSH?
+10. Cosa significa violare il limite classico `|S| ≤ 2`?
+11. Perché il valore massimo quantistico è `2√2`?
+12. Perché CHSH rafforza l’interpretazione fisica di E91?
+13. In che senso le correlazioni entangled non sono spiegabili classicamente?
+14. Qual è il collegamento tra entanglement, E91 e sicurezza della QKD?
