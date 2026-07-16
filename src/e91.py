@@ -2,6 +2,11 @@ import numpy as np
 from qiskit import QuantumCircuit
 from qiskit_aer import AerSimulator
 
+try:
+    from metrics import summarize_chsh_result
+except ImportError:
+    from .metrics import summarize_chsh_result
+
 
 def check_basis(basis):
     """Controlla che la base sia Z oppure X."""
@@ -398,7 +403,7 @@ def run_chsh_experiment(shots=1000, seed=None):
 
     S = E_ab + E_ab_prime + E_a_prime_b - E_a_prime_b_prime
 
-    return {
+    chsh_result = {
         "E_ab": E_ab,
         "E_ab_prime": E_ab_prime,
         "E_a_prime_b": E_a_prime_b,
@@ -406,6 +411,10 @@ def run_chsh_experiment(shots=1000, seed=None):
         "S": S,
         "shots": shots,
     }
+    chsh_summary = summarize_chsh_result(chsh_result)
+    chsh_result.update(chsh_summary)
+
+    return chsh_result
 
 
 def run_chsh_counts_with_eve(
@@ -564,21 +573,238 @@ def run_chsh_experiment_with_eve(
     E_a_prime_b_prime = compute_correlation_from_counts(counts_a_prime_b_prime)
 
     S = E_ab + E_ab_prime + E_a_prime_b - E_a_prime_b_prime
-    abs_S = abs(S)
-    classical_limit = 2
-    quantum_limit = 2 * np.sqrt(2)
-    violates_chsh = abs_S > classical_limit
 
-    return {
+    chsh_result = {
         "E_ab": E_ab,
         "E_ab_prime": E_ab_prime,
         "E_a_prime_b": E_a_prime_b,
         "E_a_prime_b_prime": E_a_prime_b_prime,
         "S": S,
-        "abs_S": abs_S,
-        "classical_limit": classical_limit,
-        "quantum_limit": quantum_limit,
-        "violates_chsh": violates_chsh,
         "intercept_probability": intercept_probability,
         "shots": shots,
     }
+    chsh_summary = summarize_chsh_result(chsh_result)
+    chsh_result.update(chsh_summary)
+
+    return chsh_result
+
+
+def prepare_classically_correlated_pair(circuit, source_bit):
+    """Prepara una coppia classica |00> oppure |11>."""
+    if source_bit not in (0, 1):
+        raise ValueError("source_bit deve essere 0 oppure 1.")
+
+    # Questa preparazione crea correlazione classica, non entanglement.
+    if source_bit == 1:
+        circuit.x(0)
+        circuit.x(1)
+
+    return circuit
+
+
+def choose_classical_source_bit(seed=None):
+    """Sceglie il bit della sorgente classica."""
+    rng = np.random.default_rng(seed)
+    source_bit = rng.integers(0, 2)
+
+    return int(source_bit)
+
+
+def run_e91_round_with_classical_source(
+    alice_basis,
+    bob_basis,
+    source_bit=None,
+    seed=None,
+):
+    """Simula un round E91 con sorgente classica."""
+    check_basis(alice_basis)
+    check_basis(bob_basis)
+
+    if source_bit is None:
+        source_bit = choose_classical_source_bit(seed)
+    else:
+        if source_bit not in (0, 1):
+            raise ValueError("source_bit deve essere 0 oppure 1.")
+
+    circuit = QuantumCircuit(2, 2)
+    prepare_classically_correlated_pair(circuit, source_bit)
+    measure_e91_qubit(circuit, alice_basis, qubit=0, cbit=0)
+    measure_e91_qubit(circuit, bob_basis, qubit=1, cbit=1)
+
+    if seed is None:
+        simulator = AerSimulator()
+    else:
+        simulator = AerSimulator(seed_simulator=seed + 7000)
+
+    result = simulator.run(circuit, shots=1).result()
+    counts = result.get_counts(circuit)
+
+    for bitstring in counts:
+        measured_bits = bitstring
+
+    # Qiskit mostra i bit classici come c1 c0.
+    alice_bit = int(measured_bits[-1])
+    bob_bit = int(measured_bits[-2])
+
+    return {
+        "alice_basis": alice_basis,
+        "bob_basis": bob_basis,
+        "alice_bit": alice_bit,
+        "bob_bit": bob_bit,
+        "source_type": "classical_correlated",
+        "source_bit": source_bit,
+    }
+
+
+def run_e91_protocol_with_classical_source(n_rounds, seed=None):
+    """Simula piu round E91 con sorgente classica."""
+    if n_rounds <= 0:
+        raise ValueError("n_rounds deve essere maggiore di 0.")
+
+    if seed is None:
+        alice_bases_seed = None
+        bob_bases_seed = None
+    else:
+        alice_bases_seed = seed
+        bob_bases_seed = seed + 1
+
+    alice_bases = random_bases(n_rounds, seed=alice_bases_seed)
+    bob_bases = random_bases(n_rounds, seed=bob_bases_seed)
+
+    results = []
+
+    for i in range(n_rounds):
+        alice_basis = alice_bases[i]
+        bob_basis = bob_bases[i]
+
+        if seed is None:
+            round_seed = None
+        else:
+            round_seed = seed + 20 + i
+
+        round_result = run_e91_round_with_classical_source(
+            alice_basis,
+            bob_basis,
+            seed=round_seed,
+        )
+        keep = alice_basis == bob_basis
+
+        result = {
+            "round": i,
+            "alice_basis": round_result["alice_basis"],
+            "bob_basis": round_result["bob_basis"],
+            "alice_bit": round_result["alice_bit"],
+            "bob_bit": round_result["bob_bit"],
+            "keep": keep,
+            "source_type": round_result["source_type"],
+            "source_bit": round_result["source_bit"],
+        }
+        results.append(result)
+
+    return results
+
+
+def run_chsh_counts_with_classical_source(
+    angle_a,
+    angle_b,
+    shots=1000,
+    seed=None,
+):
+    """Esegue conteggi CHSH con sorgente classica."""
+    if shots <= 0:
+        raise ValueError("shots deve essere maggiore di 0.")
+
+    rng = np.random.default_rng(seed)
+    counts = {}
+
+    for shot_index in range(shots):
+        source_bit = int(rng.integers(0, 2))
+
+        circuit = QuantumCircuit(2, 2)
+        prepare_classically_correlated_pair(circuit, source_bit)
+        measure_in_angle(circuit, angle_a, qubit=0, cbit=0)
+        measure_in_angle(circuit, angle_b, qubit=1, cbit=1)
+
+        if seed is None:
+            simulator = AerSimulator()
+        else:
+            simulator = AerSimulator(seed_simulator=seed + 8000 + shot_index)
+
+        result = simulator.run(circuit, shots=1).result()
+        shot_counts = result.get_counts(circuit)
+
+        for bitstring in shot_counts:
+            measured_bits = bitstring
+
+        if measured_bits not in counts:
+            counts[measured_bits] = 0
+        counts[measured_bits] = counts[measured_bits] + 1
+
+    return counts
+
+
+def run_chsh_experiment_with_classical_source(shots=1000, seed=None):
+    """Simula CHSH con una sorgente classicamente correlata."""
+    a = 0
+    a_prime = np.pi / 2
+    b = np.pi / 4
+    b_prime = -np.pi / 4
+
+    if seed is None:
+        seed_ab = None
+        seed_ab_prime = None
+        seed_a_prime_b = None
+        seed_a_prime_b_prime = None
+    else:
+        seed_ab = seed
+        seed_ab_prime = seed + 1
+        seed_a_prime_b = seed + 2
+        seed_a_prime_b_prime = seed + 3
+
+    counts_ab = run_chsh_counts_with_classical_source(
+        a,
+        b,
+        shots=shots,
+        seed=seed_ab,
+    )
+    E_ab = compute_correlation_from_counts(counts_ab)
+
+    counts_ab_prime = run_chsh_counts_with_classical_source(
+        a,
+        b_prime,
+        shots=shots,
+        seed=seed_ab_prime,
+    )
+    E_ab_prime = compute_correlation_from_counts(counts_ab_prime)
+
+    counts_a_prime_b = run_chsh_counts_with_classical_source(
+        a_prime,
+        b,
+        shots=shots,
+        seed=seed_a_prime_b,
+    )
+    E_a_prime_b = compute_correlation_from_counts(counts_a_prime_b)
+
+    counts_a_prime_b_prime = run_chsh_counts_with_classical_source(
+        a_prime,
+        b_prime,
+        shots=shots,
+        seed=seed_a_prime_b_prime,
+    )
+    E_a_prime_b_prime = compute_correlation_from_counts(counts_a_prime_b_prime)
+
+    S = E_ab + E_ab_prime + E_a_prime_b - E_a_prime_b_prime
+
+    chsh_result = {
+        "E_ab": E_ab,
+        "E_ab_prime": E_ab_prime,
+        "E_a_prime_b": E_a_prime_b,
+        "E_a_prime_b_prime": E_a_prime_b_prime,
+        "S": S,
+        "shots": shots,
+        "source_type": "classical_correlated",
+    }
+    chsh_summary = summarize_chsh_result(chsh_result)
+    chsh_result.update(chsh_summary)
+
+    return chsh_result

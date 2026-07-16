@@ -1557,7 +1557,33 @@ Questi risultati mostrano che l’intercettazione degrada progressivamente le co
 
 Il valore a `intercept_probability = 0.0` può risultare leggermente superiore a `2√2` a causa delle fluttuazioni statistiche dovute al numero finito di shots. Questo non rappresenta una violazione fisica del limite quantistico, ma una stima campionaria.
 
-### Violazione CHSH formale e soglia operativa
+### Soglie QBER e interpretazione CHSH
+
+Nel progetto viene usata la soglia didattica:
+
+`qber_threshold = 0.11`
+
+Questa soglia viene applicata in modo uniforme agli scenari BB84 ed E91 come criterio semplificato di accettazione o rifiuto della chiave. Il valore è collegato alla stima asintotica didattica:
+
+`r ≈ 1 - 2 h₂(Q)`
+
+dove `h₂(Q)` è l'entropia binaria e `Q` è il QBER. Non si tratta di una soglia universale valida per ogni implementazione reale, ma di un riferimento utile per confrontare gli scenari simulati.
+
+Per CHSH, invece, i riferimenti teorici usati nel progetto sono:
+
+- limite classico: `|S| ≤ 2`;
+- limite quantistico ideale di Tsirelson: `2√2`.
+
+Non viene adottata una soglia CHSH universale aggiuntiva. Il progetto usa invece due metriche quantitative:
+
+- `chsh_gap = |S| - 2`;
+- `chsh_strength`, cioè la posizione normalizzata di `|S|` tra il limite classico `2` e il limite quantistico ideale `2√2`.
+
+Una violazione CHSH debole non dimostra automaticamente l'assenza di Eve. Indica solo che le correlazioni restano formalmente non classiche, ma devono essere interpretate insieme al QBER e al contesto della simulazione.
+
+Da citare in relazione: Shor-Preskill per BB84; CHSH/Tsirelson per i limiti CHSH.
+
+### Violazione CHSH formale
 
 Nel codice, il booleano `violates_chsh` indica se:
 
@@ -1567,16 +1593,7 @@ Questa condizione significa che le correlazioni osservate violano il limite clas
 
 Tuttavia, una violazione appena sopra 2 non deve essere interpretata automaticamente come garanzia di sicurezza operativa.
 
-Per questo nel notebook è stata introdotta una soglia operativa didattica:
-
-`chsh_security_threshold = 2.2`
-
-Questa soglia serve a distinguere:
-
-- violazione CHSH formale;
-- violazione CHSH sufficientemente robusta.
-
-Ad esempio, un valore `|S| = 2.104` viola formalmente la disuguaglianza CHSH, ma è molto vicino al limite classico. Nel progetto viene quindi considerato sospetto.
+Ad esempio, un valore `|S| = 2.104` viola formalmente la disuguaglianza CHSH, ma è molto vicino al limite classico. Nel progetto questo caso viene interpretato guardando anche `chsh_gap` e `chsh_strength`.
 
 Questa distinzione è importante per la relazione:
 
@@ -1594,12 +1611,12 @@ Per BB84, la decisione è basata principalmente sul QBER:
 
 Per E91, invece, la decisione usa sia QBER sia CHSH:
 
-`accepted_final = accepted_by_qber and accepted_by_chsh_threshold`
+`accepted_final = accepted_by_qber and violates_chsh`
 
 dove:
 
 - `accepted_by_qber` è vero se `QBER <= qber_threshold`;
-- `accepted_by_chsh_threshold` è vero se `|S| >= chsh_security_threshold`.
+- `violates_chsh` è vero se `|S| > 2`.
 
 Questa decisione non sostituisce una procedura completa di sicurezza, ma serve come criterio operativo didattico per confrontare i protocolli.
 
@@ -1626,8 +1643,9 @@ La tabella comparativa finale include metriche come:
 - accettazione tramite QBER;
 - `abs_S`;
 - violazione CHSH;
-- soglia operativa CHSH;
-- accettazione tramite CHSH;
+- `chsh_gap`;
+- `chsh_strength`;
+- limiti teorici CHSH;
 - decisione finale.
 
 Per BB84 le colonne relative a CHSH non si applicano.
@@ -1713,7 +1731,7 @@ Non sono stati inclusi:
 - analisi statistica rigorosa della significatività della violazione CHSH;
 - stima quantitativa dell’informazione posseduta da Eve.
 
-Inoltre, la soglia operativa `chsh_security_threshold = 2.2` è una scelta didattica del progetto, non una soglia universale di sicurezza.
+Inoltre, il progetto non adotta una soglia CHSH universale aggiuntiva. La violazione viene interpretata tramite `violates_chsh`, `chsh_gap` e `chsh_strength`.
 
 ### Risultato concettuale dell’unità
 
@@ -1748,8 +1766,8 @@ Questa unità può essere usata nella relazione per:
 5. Che cosa rappresenta il parametro `S`?
 6. Perché `|S| > 2` indica violazione del limite classico?
 7. Perché `violates_chsh = True` non significa automaticamente che Eve sia assente?
-8. Che differenza c’è tra violazione CHSH formale e soglia operativa?
-9. Perché avete introdotto `chsh_security_threshold = 2.2`?
+8. Che differenza c’è tra violazione CHSH formale e forza quantitativa della violazione?
+9. Che cosa rappresentano `chsh_gap` e `chsh_strength`?
 10. Come si comporta `|S|` al crescere della probabilità di intercettazione?
 11. Perché E91 è più costoso sperimentalmente di BB84?
 12. In che senso E91 offre una diagnostica più ricca?
