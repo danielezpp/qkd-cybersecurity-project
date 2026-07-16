@@ -1016,3 +1016,743 @@ Questa unità può essere usata nella relazione per:
 10. Perché il confronto attuale non è ancora sufficiente per parlare di scalabilità reale?
 11. Perché è utile ripetere gli esperimenti su più seed?
 12. Quali aspetti richiedono l’introduzione del rumore?
+
+## Unità 5 — Rumore, decoerenza e scalabilità
+
+### Obiettivo dell’unità
+
+L’obiettivo dell’Unità 5 è introdurre modelli di rumore e dissipazione nel protocollo BB84, passando progressivamente da modelli didattici semplici a una versione più vicina all’articolo fornito dal docente.
+
+Nelle unità precedenti il progetto ha considerato:
+
+- BB84 ideale;
+- BB84 con attacco intercept-resend;
+- E91 ideale;
+- verifica CHSH;
+- confronto BB84/E91 tramite metriche comuni.
+
+In questa unità il canale quantistico non viene più trattato come ideale, ma come soggetto a rumore, decoerenza e dissipazione. L’obiettivo è studiare come tali effetti aumentino il QBER e possano portare al rifiuto della chiave.
+
+La struttura dell’unità è progressiva:
+
+1. rumore bit-flip;
+2. amplitude damping tramite Qiskit Aer NoiseModel;
+3. confronto bit-flip/amplitude damping;
+4. modello Jaynes-Cummings semplificato ispirato all’articolo;
+5. QBER in funzione della distanza;
+6. analisi dell’effetto del parametro R.
+
+### File coinvolti
+
+I file principali coinvolti sono:
+
+- `src/noise.py`;
+- `notebooks/05_noise_decoherence_optional.ipynb`;
+- `results/tables/bb84_bit_flip_noise_sweep.csv`;
+- `results/tables/bb84_amplitude_damping_sweep.csv`;
+- `results/tables/bb84_noise_model_comparison.csv`;
+- `results/tables/bb84_jc_damping_probability_vs_distance.csv`;
+- `results/tables/bb84_jc_qber_vs_distance_R_0_1.csv`;
+- `results/tables/bb84_jc_qber_vs_distance_multi_R.csv`;
+- `results/tables/bb84_jc_acceptance_table.csv`;
+- `results/figures/` con i grafici associati a QBER, key rate, damping probability e confronto multi-R.
+
+Il modulo `noise.py` contiene le funzioni per simulare rumore bit-flip, amplitude damping standard e amplitude damping ispirato al modello Jaynes-Cummings.
+
+Il notebook `05_noise_decoherence_optional.ipynb` raccoglie gli esperimenti, costruisce tabelle e grafici e salva i risultati finali.
+
+### Rumore bit-flip
+
+Il primo modello introdotto è il rumore bit-flip.
+
+Nel modello bit-flip, il canale applica un gate `X` al qubit trasmesso con probabilità `noise_probability`.
+
+Il gate `X` agisce come inversione nella base computazionale:
+
+- `|0⟩` diventa `|1⟩`;
+- `|1⟩` diventa `|0⟩`.
+
+Nel protocollo BB84, però, Alice può preparare anche stati nella base diagonale `X`, cioè `|+⟩` e `|-⟩`. In quella base l’effetto del gate `X` non produce lo stesso tipo di errore osservabile:
+
+- `X|+⟩ = |+⟩`;
+- `X|-⟩ = -|-⟩`.
+
+Il segno globale non modifica le probabilità di misura. Per questo il QBER osservato può essere inferiore alla probabilità nominale di rumore.
+
+Questa osservazione è importante perché mostra che la probabilità con cui un errore viene applicato al canale non coincide necessariamente con il QBER finale.
+
+### Funzioni bit-flip implementate
+
+In `src/noise.py` sono state implementate le seguenti funzioni:
+
+- `check_probability(probability)`;
+- `apply_bit_flip_noise(circuit, qubit, noise_probability, seed=None)`;
+- `run_bb84_round_with_bit_flip_noise(alice_bit, alice_basis, bob_basis, noise_probability=0.0, seed=None)`;
+- `run_bb84_protocol_with_bit_flip_noise(n_rounds, noise_probability=0.0, seed=None)`.
+
+La funzione `apply_bit_flip_noise` applica il gate `X` con probabilità `noise_probability` e restituisce anche una variabile booleana `noise_applied`, che indica se il bit-flip è stato effettivamente applicato in quello specifico round.
+
+### Risultati bit-flip
+
+Nel notebook 05 è stato studiato il QBER al variare di `noise_probability`.
+
+I risultati mostrano che:
+
+- aumentando la probabilità di rumore, il QBER tende ad aumentare;
+- il QBER non coincide esattamente con la probabilità di rumore;
+- il sifted key rate resta legato soprattutto alla probabilità che Alice e Bob scelgano la stessa base;
+- la soglia QBER permette di decidere se la chiave deve essere accettata o rifiutata.
+
+Il bit-flip è stato usato come primo modello didattico, utile per evidenziare il legame tra rumore del canale e aumento degli errori nella chiave sifted.
+
+### Amplitude damping standard
+
+Il secondo modello introdotto è l’amplitude damping.
+
+L’amplitude damping è un canale quantistico dissipativo che descrive il decadimento dallo stato eccitato allo stato fondamentale:
+
+`|1⟩ → |0⟩`
+
+con una certa probabilità.
+
+A differenza del bit-flip, l’amplitude damping è un rumore asimmetrico:
+
+- `|0⟩` è stabile;
+- `|1⟩` può decadere verso `|0⟩`.
+
+Nel progetto questo modello è stato implementato usando `NoiseModel` e `amplitude_damping_error` di Qiskit Aer.
+
+La scelta è coerente con l’idea fisica dell’articolo fornito dal docente, nel quale l’amplitude damping viene usato per descrivere dissipazione, scattering e attenuazione durante la trasmissione.
+
+### Funzioni amplitude damping implementate
+
+In `src/noise.py` sono state aggiunte le seguenti funzioni:
+
+- `build_amplitude_damping_noise_model(damping_probability)`;
+- `run_bb84_round_with_amplitude_damping(alice_bit, alice_basis, bob_basis, damping_probability=0.0, seed=None)`;
+- `run_bb84_protocol_with_amplitude_damping(n_rounds, damping_probability=0.0, seed=None)`.
+
+Nel circuito il canale rumoroso è rappresentato tramite un’istruzione `id`, alla quale il noise model associa l’errore di amplitude damping.
+
+Il flusso del singolo round diventa:
+
+Alice prepara il qubit → passaggio nel canale `id` rumoroso → Bob misura.
+
+### Confronto bit-flip e amplitude damping
+
+Nel notebook 05 è stato confrontato il comportamento dei due modelli di rumore:
+
+- bit-flip;
+- amplitude damping.
+
+Il bit-flip applica una inversione discreta tramite il gate `X`.
+
+L’amplitude damping rappresenta invece una perdita di eccitazione da `|1⟩` verso `|0⟩`.
+
+Entrambi possono aumentare il QBER, ma con meccanismi differenti.
+
+Il confronto mostra che modelli di rumore diversi possono produrre curve QBER differenti, anche a parità di probabilità nominale. Questo è importante perché il rumore quantistico non può essere ridotto a un unico parametro astratto senza considerare il tipo di canale fisico modellato.
+
+### Collegamento con l’articolo del docente
+
+L’articolo di riferimento è *Dissipative dynamics in quantum key distribution*.
+
+L’articolo studia la dinamica dissipativa nel protocollo BB84, simulando l’attenuazione in fibra ottica tramite il modello Jaynes-Cummings e calcolando il QBER in funzione della distanza. L’obiettivo è mostrare come l’interazione sistema-ambiente influenzi la trasmissione dell’informazione quantistica.
+
+Nel paper, il sistema aperto è costituito dal qubit trasmesso, mentre l’ambiente rappresenta i modi esterni con cui il qubit interagisce durante la propagazione. L’articolo collega il canale di amplitude damping al modello Jaynes-Cummings, mostrando che la dissipazione può essere descritta tramite la sopravvivenza della componente eccitata.
+
+Nel nostro progetto l’articolo è stato usato come base teorica per costruire un modello semplificato:
+
+distanza → tempo di propagazione → ampiezza `C1(t)` → damping probability → simulazione BB84 → QBER.
+
+### Sistemi quantistici aperti
+
+Un sistema quantistico aperto è un sistema che interagisce con un ambiente esterno.
+
+Nel nostro caso:
+
+- il sistema è il qubit/fotone trasmesso da Alice a Bob;
+- l’ambiente rappresenta il canale fisico, la fibra, scattering, dissipazione e modi esterni.
+
+Nei sistemi chiusi l’evoluzione è unitaria. Nei sistemi aperti, invece, osservando solo il sistema principale, l’evoluzione può diventare non unitaria perché parte dell’informazione o dell’energia viene trasferita all’ambiente.
+
+Questa distinzione è centrale per comprendere perché il rumore del canale possa alterare la chiave BB84.
+
+### Modello Jaynes-Cummings semplificato
+
+Il modello Jaynes-Cummings descrive un sistema a due livelli accoppiato a un ambiente bosonico. Nell’articolo viene usato per modellare la trasmissione quantistica in fibra ottica.
+
+Nel nostro progetto non è stata implementata la master equation completa, ma una versione semplificata basata sull’ampiezza `C1(t)`.
+
+`C1(t)` rappresenta l’ampiezza di probabilità che il sistema resti nello stato eccitato `|1⟩` dopo un tempo `t`.
+
+Da `C1(t)` si ricava la probabilità effettiva di damping:
+
+`damping_probability = 1 - |C1(t)|²`
+
+Il significato fisico è:
+
+- se `|C1(t)|²` è vicino a 1, lo stato eccitato sopravvive;
+- se `|C1(t)|²` diminuisce, aumenta la probabilità di decadimento;
+- maggiore damping può produrre maggiore QBER.
+
+### Catena distanza → damping → QBER
+
+Per collegare il modello alla distanza, è stata usata la catena:
+
+1. scelta della distanza `d` in km;
+2. conversione in tempo di propagazione `t = d / v`;
+3. calcolo del parametro `lambda` dalla attenuazione della fibra;
+4. calcolo dell’ampiezza `C1(t)`;
+5. calcolo della damping probability;
+6. esecuzione di BB84 con amplitude damping;
+7. calcolo del QBER.
+
+I parametri principali sono:
+
+- `distance_km`: distanza Alice-Bob;
+- `fiber_speed_km_s`: velocità della luce nella fibra;
+- `attenuation_db_per_km`: attenuazione della fibra;
+- `coupling_ratio`: parametro `R = Γ0 / λ`.
+
+Nel notebook sono stati usati valori coerenti con il modello semplificato e con l’articolo, tra cui:
+
+- `fiber_speed_km_s = 203390`;
+- `attenuation_db_per_km = 0.21`;
+- valori di `R` come `0.1`, `0.3`, `0.49`.
+
+### Funzioni Jaynes-Cummings implementate
+
+In `src/noise.py` sono state aggiunte le seguenti funzioni:
+
+- `compute_lambda_from_attenuation(attenuation_db_per_km, fiber_speed_km_s=203390)`;
+- `compute_time_from_distance(distance_km, fiber_speed_km_s=203390)`;
+- `compute_c1_amplitude(time_s, lambda_parameter, coupling_ratio)`;
+- `compute_jc_damping_probability(time_s, lambda_parameter, coupling_ratio)`;
+- `compute_jc_damping_probability_from_distance(distance_km, attenuation_db_per_km=0.21, coupling_ratio=0.1, fiber_speed_km_s=203390)`;
+- `run_bb84_protocol_with_jc_amplitude_damping(n_rounds, distance_km, attenuation_db_per_km=0.21, coupling_ratio=0.1, fiber_speed_km_s=203390, seed=None)`.
+
+Queste funzioni non sostituiscono il modello standard Qiskit Aer, ma aggiungono un livello più vicino all’articolo del docente.
+
+### QBER in funzione della distanza
+
+Nel notebook è stato calcolato il QBER di BB84 in funzione della distanza usando il modello Jaynes-Cummings semplificato.
+
+Per ogni distanza:
+
+- si calcola la damping probability;
+- si esegue il protocollo BB84;
+- si effettua il sifting;
+- si calcola il QBER;
+- si confronta il QBER con la soglia di accettazione.
+
+Il risultato atteso è che, all’aumentare della distanza, la qualità del canale peggiora e il QBER tende ad aumentare, pur con fluttuazioni statistiche dovute al numero finito di round.
+
+Il sifted key rate resta invece legato soprattutto alla scelta casuale delle basi e quindi non rappresenta, da solo, la qualità fisica del canale.
+
+### Effetto del parametro R
+
+Il parametro `R` controlla la forza relativa dell’accoppiamento sistema-ambiente.
+
+Nel notebook sono stati confrontati diversi valori:
+
+- `R = 0.1`;
+- `R = 0.3`;
+- `R = 0.49`.
+
+Valori piccoli di `R` producono una crescita più moderata della dissipazione e del QBER.
+
+Valori più grandi producono una dinamica più intensa e possono avvicinare il modello al regime non markoviano.
+
+Nel paper, aumentando `R`, il QBER evolve verso un comportamento non markoviano, con oscillazioni a brevi distanze; a distanze grandi, invece, il QBER tende a saturare verso un valore comune. Nel nostro progetto questa parte è trattata in modo semplificato e didattico.
+
+### Markoviano e non markoviano
+
+Nel regime markoviano, l’ambiente non restituisce informazione al sistema. La perdita è sostanzialmente irreversibile e il QBER tende a crescere in modo regolare con la distanza.
+
+Nel regime non markoviano, l’ambiente conserva memoria e può esserci uno scambio di informazione o energia tra sistema e ambiente. Questo può produrre oscillazioni del QBER, soprattutto a brevi distanze.
+
+L’articolo mostra che i dati sperimentali considerati sono compatibili con una dinamica markoviana, ma studia anche il passaggio verso il regime non markoviano variando il parametro `R`.
+
+Nel nostro progetto il regime non markoviano non viene riprodotto integralmente, ma viene discusso come estensione del modello e come interpretazione del ruolo del parametro `R`.
+
+### Output prodotti
+
+L’Unità 5 produce tabelle come:
+
+- `results/tables/bb84_bit_flip_noise_sweep.csv`;
+- `results/tables/bb84_amplitude_damping_sweep.csv`;
+- `results/tables/bb84_noise_model_comparison.csv`;
+- `results/tables/bb84_jc_damping_probability_vs_distance.csv`;
+- `results/tables/bb84_jc_qber_vs_distance_R_0_1.csv`;
+- `results/tables/bb84_jc_qber_vs_distance_multi_R.csv`;
+- `results/tables/bb84_jc_acceptance_table.csv`.
+
+Produce inoltre grafici relativi a:
+
+- QBER vs probabilità di bit-flip;
+- sifted key rate vs probabilità di bit-flip;
+- QBER vs amplitude damping;
+- confronto QBER bit-flip/amplitude damping;
+- damping probability vs distanza;
+- QBER vs distanza;
+- sifted key rate vs distanza;
+- QBER vs distanza per diversi valori di `R`.
+
+Questi output possono essere usati nella relazione finale per mostrare l’effetto progressivo del rumore sulla qualità della chiave.
+
+### Limiti del modello
+
+Il modello implementato resta semplificato.
+
+Non sono stati inclusi:
+
+- perdita esplicita di fotoni;
+- dark counts;
+- efficienza dei detector;
+- apparato sperimentale completo;
+- riconciliazione dell’informazione;
+- privacy amplification;
+- autenticazione del canale classico;
+- best fit su dati sperimentali;
+- master equation completa;
+- riproduzione esatta delle figure dell’articolo.
+
+Il progetto non pretende quindi di riprodurre integralmente l’articolo. L’obiettivo è usare l’articolo come riferimento teorico per costruire una simulazione didattica coerente, che colleghi dissipazione, distanza e QBER.
+
+### Risultato concettuale dell’unità
+
+L’Unità 5 mostra che il QBER può aumentare per cause diverse:
+
+1. intercettazione da parte di Eve;
+2. rumore bit-flip;
+3. amplitude damping;
+4. dissipazione dipendente dalla distanza secondo un modello Jaynes-Cummings semplificato.
+
+Questa distinzione è centrale per il progetto, perché permette di separare gli errori causati da un attaccante dagli errori causati dal canale fisico.
+
+Nel caso reale, un QBER elevato non prova automaticamente la presenza di Eve: può anche derivare da rumore, decoerenza o imperfezioni sperimentali. Per questo il protocollo deve stimare il QBER e decidere se accettare o rifiutare la chiave.
+
+### Elementi da usare nella relazione finale
+
+Questa unità può essere usata nella relazione per:
+
+- introdurre la differenza tra protocollo ideale e canale fisico rumoroso;
+- spiegare il ruolo del QBER come metrica di qualità della chiave;
+- confrontare rumore bit-flip e amplitude damping;
+- collegare amplitude damping a dissipazione e decoerenza;
+- mostrare un collegamento con l’articolo del docente;
+- discutere il modello Jaynes-Cummings in forma semplificata;
+- analizzare QBER in funzione della distanza;
+- discutere il ruolo del parametro `R`;
+- evidenziare i limiti della simulazione;
+- preparare una sezione sulle prospettive future.
+
+### Possibili domande orali
+
+1. Perché hai introdotto il rumore dopo BB84 ideale e BB84 con Eve?
+2. Che differenza c’è tra bit-flip e amplitude damping?
+3. Perché il QBER non coincide necessariamente con la probabilità di rumore?
+4. Che cosa rappresenta l’amplitude damping?
+5. Perché l’amplitude damping è un modello asimmetrico?
+6. Come hai implementato l’amplitude damping in Qiskit?
+7. Perché hai usato l’istruzione `id` nel circuito?
+8. Che ruolo ha l’articolo del docente nel progetto?
+9. Che cos’è un sistema quantistico aperto?
+10. Che cosa rappresenta il modello Jaynes-Cummings?
+11. Che cosa rappresenta `C1(t)`?
+12. Come ricavi la damping probability da `C1(t)`?
+13. Come colleghi la distanza al QBER?
+14. Che cosa rappresenta il parametro `R`?
+15. Qual è la differenza tra regime markoviano e non markoviano?
+16. Perché il modello implementato è una semplificazione dell’articolo?
+17. Quali elementi fisici non hai incluso nella simulazione?
+18. Perché un QBER alto non implica necessariamente la presenza di Eve?
+19. Quale metrica useresti per decidere se accettare o rifiutare una chiave?
+20. Come estenderesti il progetto in futuro?
+
+## Unità 6 — E91 con attacco intercept-resend e controllo CHSH
+
+### Obiettivo dell’unità
+
+L’obiettivo dell’Unità 6 è estendere lo studio dell’intercettazione anche al protocollo E91.
+
+Nelle unità precedenti l’attacco intercept-resend era stato implementato sul protocollo BB84. In quel caso Eve intercetta il qubit preparato da Alice, lo misura in una base scelta casualmente e reinvia a Bob un nuovo qubit coerente con il risultato ottenuto.
+
+Nel protocollo E91 la situazione è diversa: Alice e Bob non usano qubit preparati direttamente da Alice, ma condividono coppie entangled. Eve, quindi, intercetta il qubit entangled destinato a Bob. Misurando quel qubit, Eve rompe l’entanglement originario tra Alice e Bob e reinvia a Bob un nuovo qubit preparato in base al risultato della propria misura.
+
+Questa unità permette quindi di osservare l’effetto dell’intercettazione su E91 tramite due metriche:
+
+- QBER;
+- parametro CHSH `S`.
+
+Questa è una differenza importante rispetto a BB84: in BB84 il disturbo viene rilevato principalmente tramite QBER, mentre in E91 è possibile osservare anche la degradazione delle correlazioni quantistiche tramite CHSH.
+
+### File coinvolti
+
+I file principali coinvolti sono:
+
+- `src/e91.py`;
+- `notebooks/06_e91_intercept_resend_qber.ipynb`;
+- `notebooks/04_comparison_and_results.ipynb`;
+- `results/tables/e91_eve_qber_vs_interception.csv`;
+- `results/tables/e91_eve_chsh_vs_interception.csv`;
+- `results/tables/e91_eve_qber_chsh_comparison.csv`;
+- `results/figures/e91_eve_qber_vs_interception.png`;
+- `results/figures/e91_eve_chsh_vs_interception.png`;
+- `results/figures/e91_eve_qber_for_chsh_comparison.png`.
+
+Il file `src/e91.py` contiene le funzioni per E91 ideale, E91 con Eve, CHSH ideale e CHSH con Eve.
+
+Il notebook `06_e91_intercept_resend_qber.ipynb` raccoglie la simulazione specifica dell’attacco su E91.
+
+Il notebook `04_comparison_and_results.ipynb` è stato aggiornato per includere nel confronto finale anche E91 con Eve e CHSH con Eve.
+
+### Differenza tra intercept-resend in BB84 e in E91
+
+Nel protocollo BB84, Alice prepara direttamente un qubit in una certa base e lo invia a Bob. Eve intercetta questo qubit, lo misura in una base casuale e poi reinvia a Bob un qubit preparato da lei.
+
+Nel protocollo E91, invece, Alice e Bob ricevono due qubit appartenenti a una coppia entangled. Eve intercetta il qubit destinato a Bob. Misurando quel qubit, Eve non si limita a leggere uno stato già preparato da Alice, ma altera la coppia entangled nel suo complesso.
+
+La differenza concettuale è quindi:
+
+- in BB84 Eve disturba uno stato preparato da Alice;
+- in E91 Eve rompe le correlazioni entangled tra Alice e Bob.
+
+Questa distinzione è centrale nella relazione, perché mostra che E91 offre una diagnostica più ricca: non solo il QBER può aumentare, ma anche la violazione CHSH può degradarsi o sparire.
+
+### Funzioni E91 con Eve implementate
+
+In `src/e91.py` sono state aggiunte funzioni per simulare l’attacco intercept-resend su E91:
+
+- `choose_eve_basis(seed=None)`;
+- `prepare_single_qubit_from_bit_basis(circuit, bit, basis, qubit=0)`;
+- `run_e91_round_with_eve(alice_basis, bob_basis, intercept_probability=1.0, seed=None)`;
+- `run_e91_protocol_with_eve(n_rounds, intercept_probability=1.0, seed=None)`.
+
+La funzione `choose_eve_basis` sceglie casualmente la base di Eve tra `Z` e `X`.
+
+La funzione `prepare_single_qubit_from_bit_basis` permette a Eve di ricostruire un qubit coerente con il bit e la base ottenuti dalla propria misura.
+
+La funzione `run_e91_round_with_eve` simula un singolo round E91 con eventuale intercettazione.
+
+La funzione `run_e91_protocol_with_eve` ripete il round per più iterazioni, salvando per ogni round:
+
+- round;
+- base di Alice;
+- base di Bob;
+- bit di Alice;
+- bit di Bob;
+- informazione sul fatto che Eve abbia intercettato;
+- base scelta da Eve;
+- bit ottenuto da Eve;
+- indicatore `keep`, cioè se Alice e Bob hanno scelto la stessa base.
+
+La struttura dei dizionari è stata mantenuta coerente con quella già usata nel protocollo BB84 con Eve.
+
+### E91 senza Eve
+
+Nel caso ideale senza Eve, la sorgente prepara coppie entangled nello stato di Bell `|Φ+⟩`.
+
+Quando Alice e Bob scelgono la stessa base, i risultati sono correlati e possono essere usati per costruire una chiave condivisa.
+
+In assenza di rumore e attacchi, il QBER atteso è nullo.
+
+Questo scenario rappresenta il riferimento ideale per valutare l’effetto dell’intercettazione.
+
+### E91 con Eve intercept-resend
+
+Nel caso con Eve, l’attaccante intercetta il qubit destinato a Bob.
+
+La sequenza concettuale è:
+
+1. la sorgente prepara una coppia entangled;
+2. Alice riceve il proprio qubit;
+3. Eve intercetta il qubit destinato a Bob;
+4. Eve misura il qubit in base `Z` o `X`;
+5. la misura di Eve rompe l’entanglement originario;
+6. Eve prepara un nuovo qubit coerente con il risultato ottenuto;
+7. Bob misura il qubit ricevuto da Eve;
+8. Alice e Bob eseguono il sifting;
+9. viene calcolato il QBER.
+
+L’effetto atteso è un aumento del QBER rispetto al caso ideale, perché Bob non misura più il qubit originariamente entangled con quello di Alice.
+
+### QBER al variare della probabilità di intercettazione
+
+Nel notebook `06_e91_intercept_resend_qber.ipynb` è stata studiata la variazione del QBER in funzione della probabilità di intercettazione di Eve.
+
+Sono stati considerati valori del tipo:
+
+- `intercept_probability = 0.0`;
+- `intercept_probability = 0.25`;
+- `intercept_probability = 0.5`;
+- `intercept_probability = 0.75`;
+- `intercept_probability = 1.0`.
+
+Il risultato qualitativo atteso è:
+
+- per `intercept_probability = 0.0`, il QBER è nullo o molto vicino a zero;
+- aumentando la probabilità di intercettazione, il QBER tende ad aumentare;
+- per Eve sempre attiva, il QBER risulta sensibilmente maggiore rispetto al caso ideale.
+
+Questa analisi è analoga a quella già fatta per BB84, ma nel caso E91 il significato fisico è diverso: l’aumento del QBER deriva dalla rottura delle correlazioni entangled.
+
+### Controllo CHSH in presenza di Eve
+
+Poiché E91 si basa sull’entanglement, il QBER non è l’unica metrica significativa. Alice e Bob possono anche controllare se le loro correlazioni violano la disuguaglianza CHSH.
+
+Nel caso ideale, il parametro CHSH soddisfa:
+
+`|S| > 2`
+
+e si avvicina al valore quantistico ideale:
+
+`2√2 ≈ 2.828`
+
+Nel caso con Eve, l’attacco intercept-resend tende a ridurre `|S|`, perché Eve misura il qubit destinato a Bob e rompe l’entanglement.
+
+Quindi l’effetto atteso è:
+
+- E91 ideale: `QBER ≈ 0` e `|S| > 2`;
+- E91 con Eve: `QBER` aumenta e `|S|` diminuisce.
+
+Questa doppia osservazione rende E91 più ricco dal punto di vista diagnostico rispetto a BB84.
+
+### Funzioni CHSH con Eve implementate
+
+In `src/e91.py` sono state aggiunte funzioni per stimare CHSH in presenza di Eve:
+
+- `run_chsh_counts_with_eve(angle_a, angle_b, intercept_probability=1.0, shots=1000, seed=None)`;
+- `run_chsh_experiment_with_eve(intercept_probability=1.0, shots=1000, seed=None)`.
+
+La funzione `run_chsh_counts_with_eve` esegue misure CHSH in presenza di Eve per una coppia di angoli.
+
+La funzione `run_chsh_experiment_with_eve` ripete il calcolo per le quattro coppie di angoli usate nella disuguaglianza CHSH e restituisce:
+
+- correlazioni `E_ab`, `E_ab_prime`, `E_a_prime_b`, `E_a_prime_b_prime`;
+- parametro `S`;
+- valore assoluto `abs_S`;
+- limite classico;
+- limite quantistico;
+- booleano `violates_chsh`;
+- probabilità di intercettazione;
+- numero di shots.
+
+La logica è coerente con la funzione CHSH ideale già implementata.
+
+### Risultati CHSH con Eve
+
+Nel test eseguito, al variare di `intercept_probability`, il parametro `|S|` ha mostrato un andamento decrescente.
+
+Un esempio di risultati ottenuti è:
+
+- `intercept_probability = 0.0`, `|S| ≈ 2.916`, violazione CHSH presente;
+- `intercept_probability = 0.25`, `|S| ≈ 2.552`, violazione CHSH presente;
+- `intercept_probability = 0.5`, `|S| ≈ 2.104`, violazione CHSH ancora formalmente presente ma debole;
+- `intercept_probability = 0.75`, `|S| ≈ 1.814`, violazione CHSH assente;
+- `intercept_probability = 1.0`, `|S| ≈ 1.412`, violazione CHSH assente.
+
+Questi risultati mostrano che l’intercettazione degrada progressivamente le correlazioni quantistiche.
+
+Il valore a `intercept_probability = 0.0` può risultare leggermente superiore a `2√2` a causa delle fluttuazioni statistiche dovute al numero finito di shots. Questo non rappresenta una violazione fisica del limite quantistico, ma una stima campionaria.
+
+### Violazione CHSH formale e soglia operativa
+
+Nel codice, il booleano `violates_chsh` indica se:
+
+`|S| > 2`
+
+Questa condizione significa che le correlazioni osservate violano il limite classico locale.
+
+Tuttavia, una violazione appena sopra 2 non deve essere interpretata automaticamente come garanzia di sicurezza operativa.
+
+Per questo nel notebook è stata introdotta una soglia operativa didattica:
+
+`chsh_security_threshold = 2.2`
+
+Questa soglia serve a distinguere:
+
+- violazione CHSH formale;
+- violazione CHSH sufficientemente robusta.
+
+Ad esempio, un valore `|S| = 2.104` viola formalmente la disuguaglianza CHSH, ma è molto vicino al limite classico. Nel progetto viene quindi considerato sospetto.
+
+Questa distinzione è importante per la relazione:
+
+- `violates_chsh = True` non significa necessariamente “Eve è assente”;
+- significa solo che le correlazioni sono ancora non classiche;
+- per decidere se accettare la chiave bisogna considerare anche QBER e valore quantitativo di `|S|`.
+
+### Decisione operativa semplificata
+
+Nel notebook è stata introdotta una decisione finale semplificata.
+
+Per BB84, la decisione è basata principalmente sul QBER:
+
+`accepted_final = QBER <= qber_threshold`
+
+Per E91, invece, la decisione usa sia QBER sia CHSH:
+
+`accepted_final = accepted_by_qber and accepted_by_chsh_threshold`
+
+dove:
+
+- `accepted_by_qber` è vero se `QBER <= qber_threshold`;
+- `accepted_by_chsh_threshold` è vero se `|S| >= chsh_security_threshold`.
+
+Questa decisione non sostituisce una procedura completa di sicurezza, ma serve come criterio operativo didattico per confrontare i protocolli.
+
+### Confronto aggiornato nel notebook 04
+
+Il notebook `04_comparison_and_results.ipynb` è stato aggiornato per includere:
+
+- BB84 ideale;
+- BB84 con Eve;
+- E91 ideale;
+- E91 con Eve;
+- CHSH ideale;
+- CHSH con Eve.
+
+La tabella comparativa finale include metriche come:
+
+- protocollo;
+- scenario;
+- numero di round;
+- lunghezza della chiave sifted;
+- sifted key rate;
+- QBER;
+- soglia QBER;
+- accettazione tramite QBER;
+- `abs_S`;
+- violazione CHSH;
+- soglia operativa CHSH;
+- accettazione tramite CHSH;
+- decisione finale.
+
+Per BB84 le colonne relative a CHSH non si applicano.
+
+Per E91, invece, CHSH è parte essenziale della valutazione.
+
+### Differenza finale tra BB84 ed E91 in presenza di Eve
+
+Il confronto aggiornato mette in evidenza una distinzione importante:
+
+- BB84 rileva l’intercettazione principalmente tramite l’aumento del QBER;
+- E91 rileva l’intercettazione sia tramite l’aumento del QBER sia tramite la riduzione del parametro CHSH.
+
+In BB84, Eve introduce errori perché può misurare nella base sbagliata e disturbare lo stato preparato da Alice.
+
+In E91, Eve introduce disturbo perché misura il qubit destinato a Bob e rompe l’entanglement con il qubit di Alice.
+
+Quindi E91 è più complesso da realizzare sperimentalmente, ma offre un controllo più ricco sulle correlazioni quantistiche.
+
+### Robustezza
+
+Dal punto di vista della robustezza, E91 offre una doppia diagnostica:
+
+- QBER;
+- CHSH.
+
+Un attacco parziale può lasciare ancora una violazione CHSH formale, ma ridotta. Per questo non basta controllare se `|S| > 2`; è utile considerare anche quanto `|S|` sia distante dal limite classico.
+
+Il progetto introduce quindi un criterio operativo più prudente basato su una soglia CHSH maggiore di 2.
+
+### Complessità e costo
+
+L’estensione conferma anche una differenza di costo tra BB84 ed E91.
+
+BB84 usa circuiti a un qubit per round, con preparazione diretta dello stato da parte di Alice e misura da parte di Bob.
+
+E91 usa circuiti a due qubit entangled e richiede:
+
+- sorgente entangled;
+- distribuzione di coppie entangled;
+- misure correlate;
+- controllo CHSH;
+- maggiore complessità sperimentale.
+
+Dal punto di vista computazionale, E91 richiede più circuiti e più misure, soprattutto quando viene aggiunto il controllo CHSH.
+
+Dal punto di vista sperimentale, E91 è più oneroso, ma consente una verifica più profonda della natura quantistica delle correlazioni.
+
+### Output prodotti
+
+L’Unità 6 produce tabelle come:
+
+- `results/tables/e91_eve_qber_vs_interception.csv`;
+- `results/tables/e91_eve_chsh_vs_interception.csv`;
+- `results/tables/e91_eve_qber_chsh_comparison.csv`.
+
+Produce inoltre grafici come:
+
+- `results/figures/e91_eve_qber_vs_interception.png`;
+- `results/figures/e91_eve_chsh_vs_interception.png`;
+- `results/figures/e91_eve_qber_for_chsh_comparison.png`.
+
+Il notebook di confronto finale aggiorna anche:
+
+- `results/tables/comparison_summary.csv`;
+- `results/figures/comparison_qber.png`;
+- `results/figures/comparison_chsh_e91.png`.
+
+### Limiti dell’unità
+
+L’unità resta comunque semplificata.
+
+Non sono stati inclusi:
+
+- rumore fisico su E91;
+- amplitude damping su E91;
+- perdita di fotoni;
+- dark counts;
+- efficienza dei detector;
+- riconciliazione dell’informazione;
+- privacy amplification;
+- autenticazione del canale classico;
+- analisi statistica rigorosa della significatività della violazione CHSH;
+- stima quantitativa dell’informazione posseduta da Eve.
+
+Inoltre, la soglia operativa `chsh_security_threshold = 2.2` è una scelta didattica del progetto, non una soglia universale di sicurezza.
+
+### Risultato concettuale dell’unità
+
+L’Unità 6 completa il confronto tra BB84 ed E91 in presenza di Eve.
+
+Il risultato concettuale principale è:
+
+- BB84 consente di rilevare l’intercettazione tramite QBER;
+- E91 consente di rilevare l’intercettazione tramite QBER e tramite degradazione della violazione CHSH.
+
+Questa unità rende il progetto più coerente con l’obiettivo iniziale di confrontare BB84 ed E91 dal punto di vista della sicurezza, della robustezza, della scalabilità e del costo sperimentale.
+
+### Elementi da usare nella relazione finale
+
+Questa unità può essere usata nella relazione per:
+
+- spiegare come cambia intercept-resend passando da BB84 a E91;
+- mostrare che Eve rompe l’entanglement in E91;
+- analizzare il QBER al variare della probabilità di intercettazione;
+- mostrare la degradazione del parametro CHSH;
+- distinguere violazione CHSH formale e accettazione operativa;
+- confrontare BB84 ed E91 in presenza di Eve;
+- discutere robustezza, costo e complessità dei due protocolli;
+- preparare la conclusione del progetto.
+
+### Possibili domande orali
+
+1. Come cambia l’attacco intercept-resend tra BB84 ed E91?
+2. Perché in E91 Eve rompe l’entanglement?
+3. Perché il QBER aumenta in E91 con Eve?
+4. Perché E91 permette un controllo tramite CHSH?
+5. Che cosa rappresenta il parametro `S`?
+6. Perché `|S| > 2` indica violazione del limite classico?
+7. Perché `violates_chsh = True` non significa automaticamente che Eve sia assente?
+8. Che differenza c’è tra violazione CHSH formale e soglia operativa?
+9. Perché avete introdotto `chsh_security_threshold = 2.2`?
+10. Come si comporta `|S|` al crescere della probabilità di intercettazione?
+11. Perché E91 è più costoso sperimentalmente di BB84?
+12. In che senso E91 offre una diagnostica più ricca?
+13. Quali limiti ha la simulazione di Eve su E91?
+14. Come estenderesti il modello a rumore fisico su E91?
+15. Perché QBER e CHSH devono essere valutati insieme?
