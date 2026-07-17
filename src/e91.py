@@ -6,33 +6,17 @@ try:
     from qkd_core import (
         check_basis,
         check_bit,
-        compute_qber,
         random_bases,
-        random_bits,
-        sift_keys,
     )
-    from chsh import (
-        build_chsh_result,
-        compute_chsh_s,
-        compute_correlation_from_counts,
-        get_chsh_angles,
-    )
+    from chsh import run_chsh_experiment_from_counts_function
     from attacks import choose_eve_basis, prepare_single_qubit_from_bit_basis
 except ImportError:
     from .qkd_core import (
         check_basis,
         check_bit,
-        compute_qber,
         random_bases,
-        random_bits,
-        sift_keys,
     )
-    from .chsh import (
-        build_chsh_result,
-        compute_chsh_s,
-        compute_correlation_from_counts,
-        get_chsh_angles,
-    )
+    from .chsh import run_chsh_experiment_from_counts_function
     from .attacks import choose_eve_basis, prepare_single_qubit_from_bit_basis
 
 
@@ -56,39 +40,166 @@ def measure_e91_qubit(circuit, basis, qubit, cbit):
     return circuit
 
 
-def run_e91_round(alice_basis, bob_basis):
-    """Simula un singolo round E91 ideale."""
+def _run_e91_round(
+    alice_basis,
+    bob_basis,
+    source_mode="entangled",
+    attack_mode=None,
+    intercept_probability=0.0,
+    source_bit=None,
+    seed=None,
+):
+    """Esegue un round E91 in uno scenario scelto."""
     check_basis(alice_basis)
     check_basis(bob_basis)
 
-    circuit = QuantumCircuit(2, 2)
-    prepare_bell_phi_plus(circuit)
+    if source_mode not in ("entangled", "classical"):
+        raise ValueError("source_mode non riconosciuto.")
+
+    if attack_mode is not None and attack_mode != "intercept_resend":
+        raise ValueError("attack_mode non riconosciuto.")
+
+    if attack_mode == "intercept_resend":
+        if source_mode != "entangled":
+            raise ValueError("Eve intercept-resend e' prevista solo con sorgente entangled.")
+
+        if intercept_probability < 0.0 or intercept_probability > 1.0:
+            raise ValueError("intercept_probability deve essere tra 0.0 e 1.0.")
+
+        rng = np.random.default_rng(seed)
+        eve_intercepted = rng.random() < intercept_probability
+
+        if not eve_intercepted:
+            round_result = _run_e91_round(alice_basis, bob_basis)
+
+            return {
+                "alice_basis": round_result["alice_basis"],
+                "bob_basis": round_result["bob_basis"],
+                "alice_bit": round_result["alice_bit"],
+                "bob_bit": round_result["bob_bit"],
+                "eve_intercepted": False,
+                "eve_basis": None,
+                "eve_bit": None,
+            }
+
+        eve_basis = choose_eve_basis(seed)
+
+        entangled_circuit = QuantumCircuit(2, 2)
+        prepare_bell_phi_plus(entangled_circuit)
+
+        # Eve misura il qubit destinato a Bob e rompe l'entanglement.
+        measure_e91_qubit(entangled_circuit, eve_basis, qubit=1, cbit=1)
+        measure_e91_qubit(entangled_circuit, alice_basis, qubit=0, cbit=0)
+
+        if seed is None:
+            simulator = AerSimulator()
+        else:
+            simulator = AerSimulator(seed_simulator=seed + 3000)
+
+        result = simulator.run(entangled_circuit, shots=1).result()
+        counts = result.get_counts(entangled_circuit)
+
+        for bitstring in counts:
+            measured_bits = bitstring
+
+        # Qiskit mostra i bit classici come c1 c0.
+        alice_bit = int(measured_bits[-1])
+        eve_bit = int(measured_bits[-2])
+
+        bob_circuit = QuantumCircuit(1, 1)
+        prepare_single_qubit_from_bit_basis(
+            bob_circuit,
+            eve_bit,
+            eve_basis,
+            qubit=0,
+        )
+        measure_e91_qubit(bob_circuit, bob_basis, qubit=0, cbit=0)
+
+        if seed is None:
+            bob_simulator = AerSimulator()
+        else:
+            bob_simulator = AerSimulator(seed_simulator=seed + 4000)
+
+        bob_result = bob_simulator.run(bob_circuit, shots=1).result()
+        bob_counts = bob_result.get_counts(bob_circuit)
+
+        for measured_bit in bob_counts:
+            bob_bit = int(measured_bit)
+
+        return {
+            "alice_basis": alice_basis,
+            "bob_basis": bob_basis,
+            "alice_bit": alice_bit,
+            "bob_bit": bob_bit,
+            "eve_intercepted": True,
+            "eve_basis": eve_basis,
+            "eve_bit": eve_bit,
+        }
+
+    if source_mode == "entangled":
+        circuit = QuantumCircuit(2, 2)
+        prepare_bell_phi_plus(circuit)
+    else:
+        if source_bit is None:
+            source_bit = choose_classical_source_bit(seed)
+        else:
+            check_bit(source_bit)
+
+        circuit = QuantumCircuit(2, 2)
+        prepare_classically_correlated_pair(circuit, source_bit)
+
     measure_e91_qubit(circuit, alice_basis, qubit=0, cbit=0)
     measure_e91_qubit(circuit, bob_basis, qubit=1, cbit=1)
 
-    simulator = AerSimulator()
+    if source_mode == "classical" and seed is not None:
+        simulator = AerSimulator(seed_simulator=seed + 7000)
+    else:
+        simulator = AerSimulator()
+
     result = simulator.run(circuit, shots=1).result()
     counts = result.get_counts(circuit)
 
-    for measured_bits in counts:
-        bit_string = measured_bits
+    for bitstring in counts:
+        measured_bits = bitstring
 
     # Qiskit mostra i bit classici come c1 c0.
-    alice_bit = int(bit_string[-1])
-    bob_bit = int(bit_string[-2])
+    alice_bit = int(measured_bits[-1])
+    bob_bit = int(measured_bits[-2])
 
-    return {
+    result = {
         "alice_basis": alice_basis,
         "bob_basis": bob_basis,
         "alice_bit": alice_bit,
         "bob_bit": bob_bit,
     }
 
+    if source_mode == "classical":
+        result["source_type"] = "classical_correlated"
+        result["source_bit"] = source_bit
 
-def run_e91_protocol(n_rounds, seed=None):
-    """Simula piu round del protocollo E91 ideale."""
+    return result
+
+
+def _run_e91_protocol(
+    n_rounds,
+    source_mode="entangled",
+    attack_mode=None,
+    intercept_probability=0.0,
+    seed=None,
+):
+    """Esegue piu round E91 in uno scenario scelto."""
     if n_rounds <= 0:
         raise ValueError("n_rounds deve essere maggiore di 0.")
+
+    if source_mode not in ("entangled", "classical"):
+        raise ValueError("source_mode non riconosciuto.")
+
+    if attack_mode is not None and attack_mode != "intercept_resend":
+        raise ValueError("attack_mode non riconosciuto.")
+
+    if attack_mode == "intercept_resend":
+        if intercept_probability < 0.0 or intercept_probability > 1.0:
+            raise ValueError("intercept_probability deve essere tra 0.0 e 1.0.")
 
     if seed is None:
         alice_bases_seed = None
@@ -106,20 +217,66 @@ def run_e91_protocol(n_rounds, seed=None):
         alice_basis = alice_bases[i]
         bob_basis = bob_bases[i]
 
-        round_result = run_e91_round(alice_basis, bob_basis)
+        if source_mode == "classical":
+            if seed is None:
+                round_seed = None
+            else:
+                round_seed = seed + 20 + i
+        elif attack_mode == "intercept_resend":
+            if seed is None:
+                round_seed = None
+            else:
+                round_seed = seed + 10 + i
+        else:
+            round_seed = None
+
+        round_result = _run_e91_round(
+            alice_basis,
+            bob_basis,
+            source_mode=source_mode,
+            attack_mode=attack_mode,
+            intercept_probability=intercept_probability,
+            seed=round_seed,
+        )
         keep = alice_basis == bob_basis
 
+        if source_mode == "classical":
+            round_number = i
+        else:
+            round_number = i + 1
+
         result = {
-            "round": i + 1,
+            "round": round_number,
             "alice_basis": round_result["alice_basis"],
             "bob_basis": round_result["bob_basis"],
             "alice_bit": round_result["alice_bit"],
             "bob_bit": round_result["bob_bit"],
             "keep": keep,
         }
+
+        if attack_mode == "intercept_resend":
+            result["eve_intercepted"] = round_result["eve_intercepted"]
+            result["eve_basis"] = round_result["eve_basis"]
+            result["eve_bit"] = round_result["eve_bit"]
+
+        if source_mode == "classical":
+            result["source_type"] = round_result["source_type"]
+            result["source_bit"] = round_result["source_bit"]
+
         results.append(result)
 
     return results
+
+
+def run_e91_round(alice_basis, bob_basis):
+    """Simula un singolo round E91 ideale."""
+    return _run_e91_round(alice_basis, bob_basis)
+
+
+def run_e91_protocol(n_rounds, seed=None):
+    """Simula piu round del protocollo E91 ideale."""
+    return _run_e91_protocol(n_rounds, seed=seed)
+
 
 def run_e91_round_with_eve(
     alice_basis,
@@ -128,81 +285,14 @@ def run_e91_round_with_eve(
     seed=None,
 ):
     """Simula un singolo round E91 con Eve."""
-    check_basis(alice_basis)
-    check_basis(bob_basis)
-
-    if intercept_probability < 0.0 or intercept_probability > 1.0:
-        raise ValueError("intercept_probability deve essere tra 0.0 e 1.0.")
-
-    rng = np.random.default_rng(seed)
-    eve_intercepted = rng.random() < intercept_probability
-
-    if not eve_intercepted:
-        round_result = run_e91_round(alice_basis, bob_basis)
-
-        return {
-            "alice_basis": round_result["alice_basis"],
-            "bob_basis": round_result["bob_basis"],
-            "alice_bit": round_result["alice_bit"],
-            "bob_bit": round_result["bob_bit"],
-            "eve_intercepted": False,
-            "eve_basis": None,
-            "eve_bit": None,
-        }
-
-    eve_basis = choose_eve_basis(seed)
-
-    entangled_circuit = QuantumCircuit(2, 2)
-    prepare_bell_phi_plus(entangled_circuit)
-
-    # Eve misura il qubit destinato a Bob e rompe l'entanglement.
-    measure_e91_qubit(entangled_circuit, eve_basis, qubit=1, cbit=1)
-    measure_e91_qubit(entangled_circuit, alice_basis, qubit=0, cbit=0)
-
-    if seed is None:
-        simulator = AerSimulator()
-    else:
-        simulator = AerSimulator(seed_simulator=seed + 3000)
-
-    result = simulator.run(entangled_circuit, shots=1).result()
-    counts = result.get_counts(entangled_circuit)
-
-    for bitstring in counts:
-        measured_bits = bitstring
-
-    # Qiskit mostra i bit classici come c1 c0.
-    alice_bit = int(measured_bits[-1])
-    eve_bit = int(measured_bits[-2])
-
-    bob_circuit = QuantumCircuit(1, 1)
-    prepare_single_qubit_from_bit_basis(
-        bob_circuit,
-        eve_bit,
-        eve_basis,
-        qubit=0,
+    return _run_e91_round(
+        alice_basis,
+        bob_basis,
+        source_mode="entangled",
+        attack_mode="intercept_resend",
+        intercept_probability=intercept_probability,
+        seed=seed,
     )
-    measure_e91_qubit(bob_circuit, bob_basis, qubit=0, cbit=0)
-
-    if seed is None:
-        bob_simulator = AerSimulator()
-    else:
-        bob_simulator = AerSimulator(seed_simulator=seed + 4000)
-
-    bob_result = bob_simulator.run(bob_circuit, shots=1).result()
-    bob_counts = bob_result.get_counts(bob_circuit)
-
-    for measured_bit in bob_counts:
-        bob_bit = int(measured_bit)
-
-    return {
-        "alice_basis": alice_basis,
-        "bob_basis": bob_basis,
-        "alice_bit": alice_bit,
-        "bob_bit": bob_bit,
-        "eve_intercepted": True,
-        "eve_basis": eve_basis,
-        "eve_bit": eve_bit,
-    }
 
 
 def run_e91_protocol_with_eve(
@@ -211,55 +301,13 @@ def run_e91_protocol_with_eve(
     seed=None,
 ):
     """Simula piu round E91 con Eve."""
-    if n_rounds <= 0:
-        raise ValueError("n_rounds deve essere maggiore di 0.")
-
-    if intercept_probability < 0.0 or intercept_probability > 1.0:
-        raise ValueError("intercept_probability deve essere tra 0.0 e 1.0.")
-
-    if seed is None:
-        alice_bases_seed = None
-        bob_bases_seed = None
-    else:
-        alice_bases_seed = seed
-        bob_bases_seed = seed + 1
-
-    alice_bases = random_bases(n_rounds, seed=alice_bases_seed)
-    bob_bases = random_bases(n_rounds, seed=bob_bases_seed)
-
-    results = []
-
-    for i in range(n_rounds):
-        alice_basis = alice_bases[i]
-        bob_basis = bob_bases[i]
-
-        if seed is None:
-            round_seed = None
-        else:
-            round_seed = seed + 10 + i
-
-        round_result = run_e91_round_with_eve(
-            alice_basis,
-            bob_basis,
-            intercept_probability=intercept_probability,
-            seed=round_seed,
-        )
-        keep = alice_basis == bob_basis
-
-        result = {
-            "round": i + 1,
-            "alice_basis": round_result["alice_basis"],
-            "bob_basis": round_result["bob_basis"],
-            "alice_bit": round_result["alice_bit"],
-            "bob_bit": round_result["bob_bit"],
-            "keep": keep,
-            "eve_intercepted": round_result["eve_intercepted"],
-            "eve_basis": round_result["eve_basis"],
-            "eve_bit": round_result["eve_bit"],
-        }
-        results.append(result)
-
-    return results
+    return _run_e91_protocol(
+        n_rounds,
+        source_mode="entangled",
+        attack_mode="intercept_resend",
+        intercept_probability=intercept_probability,
+        seed=seed,
+    )
 
 
 def measure_in_angle(circuit, angle, qubit, cbit):
@@ -292,45 +340,15 @@ def run_chsh_counts(angle_a, angle_b, shots=1000, seed=None):
 
 def run_chsh_experiment(shots=1000, seed=None):
     """Simula CHSH: per uno stato ideale ci aspettiamo |S| vicino a 2*sqrt(2), oltre il limite classico 2."""
-    a, a_prime, b, b_prime = get_chsh_angles()
+    metadata = {
+        "scenario": "ideal",
+    }
 
-    if seed is None:
-        seed_ab = None
-        seed_ab_prime = None
-        seed_a_prime_b = None
-        seed_a_prime_b_prime = None
-    else:
-        seed_ab = seed
-        seed_ab_prime = seed + 1
-        seed_a_prime_b = seed + 2
-        seed_a_prime_b_prime = seed + 3
-
-    counts_ab = run_chsh_counts(a, b, shots=shots, seed=seed_ab)
-    E_ab = compute_correlation_from_counts(counts_ab)
-
-    counts_ab_prime = run_chsh_counts(a, b_prime, shots=shots, seed=seed_ab_prime)
-    E_ab_prime = compute_correlation_from_counts(counts_ab_prime)
-
-    counts_a_prime_b = run_chsh_counts(a_prime, b, shots=shots, seed=seed_a_prime_b)
-    E_a_prime_b = compute_correlation_from_counts(counts_a_prime_b)
-
-    counts_a_prime_b_prime = run_chsh_counts(
-        a_prime,
-        b_prime,
+    return run_chsh_experiment_from_counts_function(
+        run_chsh_counts,
         shots=shots,
-        seed=seed_a_prime_b_prime,
-    )
-    E_a_prime_b_prime = compute_correlation_from_counts(counts_a_prime_b_prime)
-
-    S = compute_chsh_s(E_ab, E_ab_prime, E_a_prime_b, E_a_prime_b_prime)
-
-    return build_chsh_result(
-        E_ab,
-        E_ab_prime,
-        E_a_prime_b,
-        E_a_prime_b_prime,
-        S,
-        shots,
+        seed=seed,
+        extra_metadata=metadata,
     )
 
 
@@ -437,69 +455,17 @@ def run_chsh_experiment_with_eve(
     seed=None,
 ):
     """Simula CHSH con Eve intercept-resend."""
-    a, a_prime, b, b_prime = get_chsh_angles()
-
-    if seed is None:
-        seed_ab = None
-        seed_ab_prime = None
-        seed_a_prime_b = None
-        seed_a_prime_b_prime = None
-    else:
-        seed_ab = seed
-        seed_ab_prime = seed + 1
-        seed_a_prime_b = seed + 2
-        seed_a_prime_b_prime = seed + 3
-
-    counts_ab = run_chsh_counts_with_eve(
-        a,
-        b,
-        intercept_probability=intercept_probability,
-        shots=shots,
-        seed=seed_ab,
-    )
-    E_ab = compute_correlation_from_counts(counts_ab)
-
-    counts_ab_prime = run_chsh_counts_with_eve(
-        a,
-        b_prime,
-        intercept_probability=intercept_probability,
-        shots=shots,
-        seed=seed_ab_prime,
-    )
-    E_ab_prime = compute_correlation_from_counts(counts_ab_prime)
-
-    counts_a_prime_b = run_chsh_counts_with_eve(
-        a_prime,
-        b,
-        intercept_probability=intercept_probability,
-        shots=shots,
-        seed=seed_a_prime_b,
-    )
-    E_a_prime_b = compute_correlation_from_counts(counts_a_prime_b)
-
-    counts_a_prime_b_prime = run_chsh_counts_with_eve(
-        a_prime,
-        b_prime,
-        intercept_probability=intercept_probability,
-        shots=shots,
-        seed=seed_a_prime_b_prime,
-    )
-    E_a_prime_b_prime = compute_correlation_from_counts(counts_a_prime_b_prime)
-
-    S = compute_chsh_s(E_ab, E_ab_prime, E_a_prime_b, E_a_prime_b_prime)
-
     metadata = {
+        "scenario": "eve_intercept_resend",
         "intercept_probability": intercept_probability,
     }
 
-    return build_chsh_result(
-        E_ab,
-        E_ab_prime,
-        E_a_prime_b,
-        E_a_prime_b_prime,
-        S,
-        shots,
+    return run_chsh_experiment_from_counts_function(
+        run_chsh_counts_with_eve,
+        shots=shots,
+        seed=seed,
         extra_metadata=metadata,
+        intercept_probability=intercept_probability,
     )
 
 
@@ -531,91 +497,22 @@ def run_e91_round_with_classical_source(
     seed=None,
 ):
     """Simula un round E91 con sorgente classica."""
-    check_basis(alice_basis)
-    check_basis(bob_basis)
-
-    if source_bit is None:
-        source_bit = choose_classical_source_bit(seed)
-    else:
-        if source_bit not in (0, 1):
-            raise ValueError("source_bit deve essere 0 oppure 1.")
-
-    circuit = QuantumCircuit(2, 2)
-    prepare_classically_correlated_pair(circuit, source_bit)
-    measure_e91_qubit(circuit, alice_basis, qubit=0, cbit=0)
-    measure_e91_qubit(circuit, bob_basis, qubit=1, cbit=1)
-
-    if seed is None:
-        simulator = AerSimulator()
-    else:
-        simulator = AerSimulator(seed_simulator=seed + 7000)
-
-    result = simulator.run(circuit, shots=1).result()
-    counts = result.get_counts(circuit)
-
-    for bitstring in counts:
-        measured_bits = bitstring
-
-    # Qiskit mostra i bit classici come c1 c0.
-    alice_bit = int(measured_bits[-1])
-    bob_bit = int(measured_bits[-2])
-
-    return {
-        "alice_basis": alice_basis,
-        "bob_basis": bob_basis,
-        "alice_bit": alice_bit,
-        "bob_bit": bob_bit,
-        "source_type": "classical_correlated",
-        "source_bit": source_bit,
-    }
+    return _run_e91_round(
+        alice_basis,
+        bob_basis,
+        source_mode="classical",
+        source_bit=source_bit,
+        seed=seed,
+    )
 
 
 def run_e91_protocol_with_classical_source(n_rounds, seed=None):
     """Simula piu round E91 con sorgente classica."""
-    if n_rounds <= 0:
-        raise ValueError("n_rounds deve essere maggiore di 0.")
-
-    if seed is None:
-        alice_bases_seed = None
-        bob_bases_seed = None
-    else:
-        alice_bases_seed = seed
-        bob_bases_seed = seed + 1
-
-    alice_bases = random_bases(n_rounds, seed=alice_bases_seed)
-    bob_bases = random_bases(n_rounds, seed=bob_bases_seed)
-
-    results = []
-
-    for i in range(n_rounds):
-        alice_basis = alice_bases[i]
-        bob_basis = bob_bases[i]
-
-        if seed is None:
-            round_seed = None
-        else:
-            round_seed = seed + 20 + i
-
-        round_result = run_e91_round_with_classical_source(
-            alice_basis,
-            bob_basis,
-            seed=round_seed,
-        )
-        keep = alice_basis == bob_basis
-
-        result = {
-            "round": i,
-            "alice_basis": round_result["alice_basis"],
-            "bob_basis": round_result["bob_basis"],
-            "alice_bit": round_result["alice_bit"],
-            "bob_bit": round_result["bob_bit"],
-            "keep": keep,
-            "source_type": round_result["source_type"],
-            "source_bit": round_result["source_bit"],
-        }
-        results.append(result)
-
-    return results
+    return _run_e91_protocol(
+        n_rounds,
+        source_mode="classical",
+        seed=seed,
+    )
 
 
 def run_chsh_counts_with_classical_source(
@@ -659,63 +556,14 @@ def run_chsh_counts_with_classical_source(
 
 def run_chsh_experiment_with_classical_source(shots=1000, seed=None):
     """Simula CHSH con una sorgente classicamente correlata."""
-    a, a_prime, b, b_prime = get_chsh_angles()
-
-    if seed is None:
-        seed_ab = None
-        seed_ab_prime = None
-        seed_a_prime_b = None
-        seed_a_prime_b_prime = None
-    else:
-        seed_ab = seed
-        seed_ab_prime = seed + 1
-        seed_a_prime_b = seed + 2
-        seed_a_prime_b_prime = seed + 3
-
-    counts_ab = run_chsh_counts_with_classical_source(
-        a,
-        b,
-        shots=shots,
-        seed=seed_ab,
-    )
-    E_ab = compute_correlation_from_counts(counts_ab)
-
-    counts_ab_prime = run_chsh_counts_with_classical_source(
-        a,
-        b_prime,
-        shots=shots,
-        seed=seed_ab_prime,
-    )
-    E_ab_prime = compute_correlation_from_counts(counts_ab_prime)
-
-    counts_a_prime_b = run_chsh_counts_with_classical_source(
-        a_prime,
-        b,
-        shots=shots,
-        seed=seed_a_prime_b,
-    )
-    E_a_prime_b = compute_correlation_from_counts(counts_a_prime_b)
-
-    counts_a_prime_b_prime = run_chsh_counts_with_classical_source(
-        a_prime,
-        b_prime,
-        shots=shots,
-        seed=seed_a_prime_b_prime,
-    )
-    E_a_prime_b_prime = compute_correlation_from_counts(counts_a_prime_b_prime)
-
-    S = compute_chsh_s(E_ab, E_ab_prime, E_a_prime_b, E_a_prime_b_prime)
-
     metadata = {
+        "scenario": "classical_source",
         "source_type": "classical_correlated",
     }
 
-    return build_chsh_result(
-        E_ab,
-        E_ab_prime,
-        E_a_prime_b,
-        E_a_prime_b_prime,
-        S,
-        shots,
+    return run_chsh_experiment_from_counts_function(
+        run_chsh_counts_with_classical_source,
+        shots=shots,
+        seed=seed,
         extra_metadata=metadata,
     )

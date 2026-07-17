@@ -26,6 +26,22 @@ def build_bit_flip_noise_model(noise_probability):
     return noise_model
 
 
+def apply_bit_flip_noise(circuit, qubit, noise_probability, seed=None):
+    """Applica un possibile errore bit-flip al qubit."""
+    check_probability(noise_probability)
+
+    rng = np.random.default_rng(seed)
+    random_number = rng.random()
+
+    if random_number < noise_probability:
+        circuit.x(qubit)
+        noise_applied = True
+    else:
+        noise_applied = False
+
+    return circuit, noise_applied
+
+
 def build_amplitude_damping_noise_model(damping_probability):
     """Crea un noise model con amplitude damping."""
     check_probability(damping_probability)

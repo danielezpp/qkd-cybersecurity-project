@@ -7,10 +7,12 @@ from qiskit_aer import AerSimulator
 
 try:
     from e91 import (
-        check_basis,
         measure_e91_qubit,
         measure_in_angle,
         prepare_bell_phi_plus,
+    )
+    from qkd_core import (
+        check_basis,
         random_bases,
     )
     from noise_models import (
@@ -20,17 +22,16 @@ try:
         compute_jc_damping_probability_from_distance,
     )
     from chsh import (
-        build_chsh_result,
-        compute_chsh_s,
-        compute_correlation_from_counts,
-        get_chsh_angles,
+        run_chsh_experiment_from_counts_function,
     )
 except ImportError:
     from .e91 import (
-        check_basis,
         measure_e91_qubit,
         measure_in_angle,
         prepare_bell_phi_plus,
+    )
+    from .qkd_core import (
+        check_basis,
         random_bases,
     )
     from .noise_models import (
@@ -40,10 +41,7 @@ except ImportError:
         compute_jc_damping_probability_from_distance,
     )
     from .chsh import (
-        build_chsh_result,
-        compute_chsh_s,
-        compute_correlation_from_counts,
-        get_chsh_angles,
+        run_chsh_experiment_from_counts_function,
     )
 
 
@@ -212,70 +210,6 @@ def _run_noisy_chsh_counts(
     return counts
 
 
-def _run_noisy_chsh_experiment(
-    counts_function,
-    shots=1000,
-    seed=None,
-    metadata=None,
-    **counts_kwargs,
-):
-    """Esegue un esperimento CHSH rumoroso generico."""
-    a, a_prime, b, b_prime = get_chsh_angles()
-
-    seed_ab = seed
-    seed_ab_prime = _get_seed(seed, 1)
-    seed_a_prime_b = _get_seed(seed, 2)
-    seed_a_prime_b_prime = _get_seed(seed, 3)
-
-    counts_ab = counts_function(
-        a,
-        b,
-        shots=shots,
-        seed=seed_ab,
-        **counts_kwargs,
-    )
-    E_ab = compute_correlation_from_counts(counts_ab)
-
-    counts_ab_prime = counts_function(
-        a,
-        b_prime,
-        shots=shots,
-        seed=seed_ab_prime,
-        **counts_kwargs,
-    )
-    E_ab_prime = compute_correlation_from_counts(counts_ab_prime)
-
-    counts_a_prime_b = counts_function(
-        a_prime,
-        b,
-        shots=shots,
-        seed=seed_a_prime_b,
-        **counts_kwargs,
-    )
-    E_a_prime_b = compute_correlation_from_counts(counts_a_prime_b)
-
-    counts_a_prime_b_prime = counts_function(
-        a_prime,
-        b_prime,
-        shots=shots,
-        seed=seed_a_prime_b_prime,
-        **counts_kwargs,
-    )
-    E_a_prime_b_prime = compute_correlation_from_counts(counts_a_prime_b_prime)
-
-    S = compute_chsh_s(E_ab, E_ab_prime, E_a_prime_b, E_a_prime_b_prime)
-
-    return build_chsh_result(
-        E_ab,
-        E_ab_prime,
-        E_a_prime_b,
-        E_a_prime_b_prime,
-        S,
-        shots,
-        extra_metadata=metadata,
-    )
-
-
 def run_e91_round_with_bit_flip_noise(
     alice_basis,
     bob_basis,
@@ -366,11 +300,11 @@ def run_chsh_experiment_with_bit_flip_noise(
         "channel_mode": channel_mode,
     }
 
-    return _run_noisy_chsh_experiment(
+    return run_chsh_experiment_from_counts_function(
         run_chsh_counts_with_bit_flip_noise,
         shots=shots,
         seed=seed,
-        metadata=metadata,
+        extra_metadata=metadata,
         noise_probability=noise_probability,
         channel_mode=channel_mode,
     )
@@ -466,11 +400,11 @@ def run_chsh_experiment_with_amplitude_damping(
         "channel_mode": channel_mode,
     }
 
-    return _run_noisy_chsh_experiment(
+    return run_chsh_experiment_from_counts_function(
         run_chsh_counts_with_amplitude_damping,
         shots=shots,
         seed=seed,
-        metadata=metadata,
+        extra_metadata=metadata,
         damping_probability=damping_probability,
         channel_mode=channel_mode,
     )
@@ -584,7 +518,7 @@ def run_e91_protocol_with_jc_amplitude_damping(
     if n_rounds <= 0:
         raise ValueError("n_rounds deve essere maggiore di 0.")
 
-    compute_e91_jc_channel_parameters(
+    params = compute_e91_jc_channel_parameters(
         distance_km,
         channel_mode=channel_mode,
         attenuation_db_per_km=attenuation_db_per_km,
@@ -592,17 +526,27 @@ def run_e91_protocol_with_jc_amplitude_damping(
         fiber_speed_km_s=fiber_speed_km_s,
     )
 
-    return _run_noisy_e91_protocol(
+    results = _run_noisy_e91_protocol(
         n_rounds,
-        run_e91_round_with_jc_amplitude_damping,
+        run_e91_round_with_amplitude_damping,
         channel_mode,
         seed=seed,
         round_seed_offset=300,
-        distance_km=distance_km,
-        attenuation_db_per_km=attenuation_db_per_km,
-        coupling_ratio=coupling_ratio,
-        fiber_speed_km_s=fiber_speed_km_s,
+        damping_probability=params["effective_damping_probability"],
     )
+
+    for result in results:
+        result["noise_type"] = "jc_amplitude_damping"
+        result["distance_km"] = distance_km
+        result["arm_distance_alice_km"] = params["arm_distance_alice_km"]
+        result["arm_distance_bob_km"] = params["arm_distance_bob_km"]
+        result["damping_probability_alice"] = params["damping_probability_alice"]
+        result["damping_probability_bob"] = params["damping_probability_bob"]
+        result["attenuation_db_per_km"] = attenuation_db_per_km
+        result["coupling_ratio"] = coupling_ratio
+        result["fiber_speed_km_s"] = fiber_speed_km_s
+
+    return results
 
 
 def run_chsh_counts_with_jc_amplitude_damping(
@@ -668,11 +612,11 @@ def run_chsh_experiment_with_jc_amplitude_damping(
         "fiber_speed_km_s": fiber_speed_km_s,
     }
 
-    return _run_noisy_chsh_experiment(
+    return run_chsh_experiment_from_counts_function(
         run_chsh_counts_with_jc_amplitude_damping,
         shots=shots,
         seed=seed,
-        metadata=metadata,
+        extra_metadata=metadata,
         distance_km=distance_km,
         channel_mode=channel_mode,
         attenuation_db_per_km=attenuation_db_per_km,

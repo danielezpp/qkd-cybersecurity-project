@@ -98,3 +98,73 @@ def build_chsh_result(
             result[key] = extra_metadata[key]
 
     return result
+
+
+def run_chsh_experiment_from_counts_function(
+    counts_function,
+    shots=1000,
+    seed=None,
+    extra_metadata=None,
+    **counts_kwargs,
+):
+    """Esegue un esperimento CHSH usando una funzione di conteggio."""
+    a, a_prime, b, b_prime = get_chsh_angles()
+
+    if seed is None:
+        seed_ab = None
+        seed_ab_prime = None
+        seed_a_prime_b = None
+        seed_a_prime_b_prime = None
+    else:
+        seed_ab = seed
+        seed_ab_prime = seed + 1
+        seed_a_prime_b = seed + 2
+        seed_a_prime_b_prime = seed + 3
+
+    counts_ab = counts_function(
+        a,
+        b,
+        shots=shots,
+        seed=seed_ab,
+        **counts_kwargs,
+    )
+    E_ab = compute_correlation_from_counts(counts_ab)
+
+    counts_ab_prime = counts_function(
+        a,
+        b_prime,
+        shots=shots,
+        seed=seed_ab_prime,
+        **counts_kwargs,
+    )
+    E_ab_prime = compute_correlation_from_counts(counts_ab_prime)
+
+    counts_a_prime_b = counts_function(
+        a_prime,
+        b,
+        shots=shots,
+        seed=seed_a_prime_b,
+        **counts_kwargs,
+    )
+    E_a_prime_b = compute_correlation_from_counts(counts_a_prime_b)
+
+    counts_a_prime_b_prime = counts_function(
+        a_prime,
+        b_prime,
+        shots=shots,
+        seed=seed_a_prime_b_prime,
+        **counts_kwargs,
+    )
+    E_a_prime_b_prime = compute_correlation_from_counts(counts_a_prime_b_prime)
+
+    S = compute_chsh_s(E_ab, E_ab_prime, E_a_prime_b, E_a_prime_b_prime)
+
+    return build_chsh_result(
+        E_ab,
+        E_ab_prime,
+        E_a_prime_b,
+        E_a_prime_b_prime,
+        S,
+        shots,
+        extra_metadata=extra_metadata,
+    )

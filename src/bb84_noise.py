@@ -2,62 +2,43 @@
 Funzioni semplici per simulare rumore bit-flip in BB84.
 """
 
-import numpy as np
 from qiskit import QuantumCircuit
 from qiskit_aer import AerSimulator
 
 try:
     from bb84 import (
-        check_basis,
-        check_bit,
         measure_bb84_state,
         prepare_bb84_state,
+    )
+    from qkd_core import (
+        check_basis,
+        check_bit,
         random_bases,
         random_bits,
     )
     from noise_models import (
+        apply_bit_flip_noise,
         build_amplitude_damping_noise_model,
         check_probability,
-        compute_c1_amplitude,
-        compute_jc_damping_probability,
         compute_jc_damping_probability_from_distance,
-        compute_lambda_from_attenuation,
-        compute_time_from_distance,
     )
 except ImportError:
     from .bb84 import (
-        check_basis,
-        check_bit,
         measure_bb84_state,
         prepare_bb84_state,
+    )
+    from .qkd_core import (
+        check_basis,
+        check_bit,
         random_bases,
         random_bits,
     )
     from .noise_models import (
+        apply_bit_flip_noise,
         build_amplitude_damping_noise_model,
         check_probability,
-        compute_c1_amplitude,
-        compute_jc_damping_probability,
         compute_jc_damping_probability_from_distance,
-        compute_lambda_from_attenuation,
-        compute_time_from_distance,
     )
-
-
-def apply_bit_flip_noise(circuit, qubit, noise_probability, seed=None):
-    """Applica un possibile errore bit-flip al qubit."""
-    check_probability(noise_probability)
-
-    rng = np.random.default_rng(seed)
-    random_number = rng.random()
-
-    if random_number < noise_probability:
-        circuit.x(qubit)
-        noise_applied = True
-    else:
-        noise_applied = False
-
-    return circuit, noise_applied
 
 
 def run_bb84_round_with_bit_flip_noise(
