@@ -2,50 +2,48 @@
 Funzioni didattiche per simulare rumore nel protocollo E91.
 """
 
-import numpy as np
 from qiskit import QuantumCircuit
 from qiskit_aer import AerSimulator
-from qiskit_aer.noise import NoiseModel, pauli_error
 
 try:
     from e91 import (
         check_basis,
-        compute_correlation_from_counts,
         measure_e91_qubit,
         measure_in_angle,
         prepare_bell_phi_plus,
         random_bases,
     )
-    from bb84_noise import (
+    from noise_models import (
+        build_bit_flip_noise_model,
         build_amplitude_damping_noise_model,
         check_probability,
         compute_jc_damping_probability_from_distance,
     )
-    from metrics import (
-        CHSH_CLASSICAL_LIMIT,
-        CHSH_TSIRELSON_BOUND,
-        compute_chsh_gap,
-        compute_chsh_strength,
+    from chsh import (
+        build_chsh_result,
+        compute_chsh_s,
+        compute_correlation_from_counts,
+        get_chsh_angles,
     )
 except ImportError:
     from .e91 import (
         check_basis,
-        compute_correlation_from_counts,
         measure_e91_qubit,
         measure_in_angle,
         prepare_bell_phi_plus,
         random_bases,
     )
-    from .bb84_noise import (
+    from .noise_models import (
+        build_bit_flip_noise_model,
         build_amplitude_damping_noise_model,
         check_probability,
         compute_jc_damping_probability_from_distance,
     )
-    from .metrics import (
-        CHSH_CLASSICAL_LIMIT,
-        CHSH_TSIRELSON_BOUND,
-        compute_chsh_gap,
-        compute_chsh_strength,
+    from .chsh import (
+        build_chsh_result,
+        compute_chsh_s,
+        compute_correlation_from_counts,
+        get_chsh_angles,
     )
 
 
@@ -73,54 +71,6 @@ def insert_channel_identity_gates(circuit, channel_mode):
         circuit.id(qubit)
 
     return circuit
-
-
-def build_bit_flip_noise_model(noise_probability):
-    """Crea un noise model Qiskit per rumore bit-flip."""
-    check_probability(noise_probability)
-
-    noise_model = NoiseModel()
-    error = pauli_error([
-        ("X", noise_probability),
-        ("I", 1 - noise_probability),
-    ])
-    noise_model.add_all_qubit_quantum_error(error, ["id"])
-
-    return noise_model
-
-
-def build_chsh_result(
-    E_ab,
-    E_ab_prime,
-    E_a_prime_b,
-    E_a_prime_b_prime,
-    S,
-    shots,
-    extra_metadata=None,
-):
-    """Costruisce il dizionario finale per un esperimento CHSH."""
-    abs_S = abs(S)
-
-    result = {
-        "E_ab": E_ab,
-        "E_ab_prime": E_ab_prime,
-        "E_a_prime_b": E_a_prime_b,
-        "E_a_prime_b_prime": E_a_prime_b_prime,
-        "S": S,
-        "abs_S": abs_S,
-        "classical_limit": CHSH_CLASSICAL_LIMIT,
-        "quantum_limit": CHSH_TSIRELSON_BOUND,
-        "violates_chsh": abs_S > CHSH_CLASSICAL_LIMIT,
-        "chsh_gap": compute_chsh_gap(abs_S),
-        "chsh_strength": compute_chsh_strength(abs_S),
-        "shots": shots,
-    }
-
-    if extra_metadata is not None:
-        for key in extra_metadata:
-            result[key] = extra_metadata[key]
-
-    return result
 
 
 def _get_seed(base_seed, offset):
@@ -270,10 +220,7 @@ def _run_noisy_chsh_experiment(
     **counts_kwargs,
 ):
     """Esegue un esperimento CHSH rumoroso generico."""
-    a = 0
-    a_prime = np.pi / 2
-    b = np.pi / 4
-    b_prime = -np.pi / 4
+    a, a_prime, b, b_prime = get_chsh_angles()
 
     seed_ab = seed
     seed_ab_prime = _get_seed(seed, 1)
@@ -316,7 +263,7 @@ def _run_noisy_chsh_experiment(
     )
     E_a_prime_b_prime = compute_correlation_from_counts(counts_a_prime_b_prime)
 
-    S = E_ab + E_ab_prime + E_a_prime_b - E_a_prime_b_prime
+    S = compute_chsh_s(E_ab, E_ab_prime, E_a_prime_b, E_a_prime_b_prime)
 
     return build_chsh_result(
         E_ab,

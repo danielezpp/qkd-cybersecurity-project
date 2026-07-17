@@ -3,26 +3,37 @@ from qiskit import QuantumCircuit
 from qiskit_aer import AerSimulator
 
 try:
-    from metrics import summarize_chsh_result
+    from qkd_core import (
+        check_basis,
+        check_bit,
+        compute_qber,
+        random_bases,
+        random_bits,
+        sift_keys,
+    )
+    from chsh import (
+        build_chsh_result,
+        compute_chsh_s,
+        compute_correlation_from_counts,
+        get_chsh_angles,
+    )
+    from attacks import choose_eve_basis, prepare_single_qubit_from_bit_basis
 except ImportError:
-    from .metrics import summarize_chsh_result
-
-
-def check_basis(basis):
-    """Controlla che la base sia Z oppure X."""
-    if basis not in ("Z", "X"):
-        raise ValueError("La base deve essere 'Z' oppure 'X'.")
-
-
-def random_bases(n, seed=None):
-    """Genera una lista di n basi casuali."""
-    if n <= 0:
-        raise ValueError("n deve essere maggiore di 0.")
-
-    rng = np.random.default_rng(seed)
-    bases = rng.choice(["Z", "X"], size=n)
-
-    return bases.tolist()
+    from .qkd_core import (
+        check_basis,
+        check_bit,
+        compute_qber,
+        random_bases,
+        random_bits,
+        sift_keys,
+    )
+    from .chsh import (
+        build_chsh_result,
+        compute_chsh_s,
+        compute_correlation_from_counts,
+        get_chsh_angles,
+    )
+    from .attacks import choose_eve_basis, prepare_single_qubit_from_bit_basis
 
 
 def prepare_bell_phi_plus(circuit):
@@ -109,64 +120,6 @@ def run_e91_protocol(n_rounds, seed=None):
         results.append(result)
 
     return results
-
-
-def sift_keys(results):
-    """Estrae le chiavi sifted dai risultati E91."""
-    alice_key = []
-    bob_key = []
-
-    for result in results:
-        if result["keep"] is True:
-            alice_key.append(result["alice_bit"])
-            bob_key.append(result["bob_bit"])
-
-    return alice_key, bob_key
-
-
-def compute_qber(alice_key, bob_key):
-    """Calcola il QBER tra due chiavi."""
-    if len(alice_key) != len(bob_key):
-        raise ValueError("Le due chiavi devono avere la stessa lunghezza.")
-
-    if len(alice_key) == 0:
-        return np.nan
-
-    errors = 0
-
-    for i in range(len(alice_key)):
-        if alice_key[i] != bob_key[i]:
-            errors = errors + 1
-
-    return errors / len(alice_key)
-
-
-def choose_eve_basis(seed=None):
-    """Sceglie casualmente la base di Eve."""
-    rng = np.random.default_rng(seed)
-    eve_basis = rng.choice(["Z", "X"])
-
-    return str(eve_basis)
-
-
-def prepare_single_qubit_from_bit_basis(circuit, bit, basis, qubit=0):
-    """Prepara un qubit a partire da bit e base."""
-    check_basis(basis)
-
-    if bit not in (0, 1):
-        raise ValueError("Il bit deve essere 0 oppure 1.")
-
-    if basis == "Z":
-        if bit == 1:
-            circuit.x(qubit)
-
-    if basis == "X":
-        if bit == 1:
-            circuit.x(qubit)
-        circuit.h(qubit)
-
-    return circuit
-
 
 def run_e91_round_with_eve(
     alice_basis,
@@ -337,41 +290,9 @@ def run_chsh_counts(angle_a, angle_b, shots=1000, seed=None):
     return counts
 
 
-def compute_correlation_from_counts(counts):
-    """Calcola la correlazione E dai conteggi."""
-    total_shots = 0
-    weighted_sum = 0
-
-    for bitstring in counts:
-        count = counts[bitstring]
-
-        # Qiskit mostra i bit classici come c1 c0.
-        alice_bit = int(bitstring[-1])
-        bob_bit = int(bitstring[-2])
-
-        if alice_bit == 0:
-            alice_value = 1
-        else:
-            alice_value = -1
-
-        if bob_bit == 0:
-            bob_value = 1
-        else:
-            bob_value = -1
-
-        product = alice_value * bob_value
-        weighted_sum = weighted_sum + product * count
-        total_shots = total_shots + count
-
-    return float(weighted_sum / total_shots)
-
-
 def run_chsh_experiment(shots=1000, seed=None):
     """Simula CHSH: per uno stato ideale ci aspettiamo |S| vicino a 2*sqrt(2), oltre il limite classico 2."""
-    a = 0
-    a_prime = np.pi / 2
-    b = np.pi / 4
-    b_prime = -np.pi / 4
+    a, a_prime, b, b_prime = get_chsh_angles()
 
     if seed is None:
         seed_ab = None
@@ -401,20 +322,16 @@ def run_chsh_experiment(shots=1000, seed=None):
     )
     E_a_prime_b_prime = compute_correlation_from_counts(counts_a_prime_b_prime)
 
-    S = E_ab + E_ab_prime + E_a_prime_b - E_a_prime_b_prime
+    S = compute_chsh_s(E_ab, E_ab_prime, E_a_prime_b, E_a_prime_b_prime)
 
-    chsh_result = {
-        "E_ab": E_ab,
-        "E_ab_prime": E_ab_prime,
-        "E_a_prime_b": E_a_prime_b,
-        "E_a_prime_b_prime": E_a_prime_b_prime,
-        "S": S,
-        "shots": shots,
-    }
-    chsh_summary = summarize_chsh_result(chsh_result)
-    chsh_result.update(chsh_summary)
-
-    return chsh_result
+    return build_chsh_result(
+        E_ab,
+        E_ab_prime,
+        E_a_prime_b,
+        E_a_prime_b_prime,
+        S,
+        shots,
+    )
 
 
 def run_chsh_counts_with_eve(
@@ -520,10 +437,7 @@ def run_chsh_experiment_with_eve(
     seed=None,
 ):
     """Simula CHSH con Eve intercept-resend."""
-    a = 0
-    a_prime = np.pi / 2
-    b = np.pi / 4
-    b_prime = -np.pi / 4
+    a, a_prime, b, b_prime = get_chsh_angles()
 
     if seed is None:
         seed_ab = None
@@ -572,21 +486,21 @@ def run_chsh_experiment_with_eve(
     )
     E_a_prime_b_prime = compute_correlation_from_counts(counts_a_prime_b_prime)
 
-    S = E_ab + E_ab_prime + E_a_prime_b - E_a_prime_b_prime
+    S = compute_chsh_s(E_ab, E_ab_prime, E_a_prime_b, E_a_prime_b_prime)
 
-    chsh_result = {
-        "E_ab": E_ab,
-        "E_ab_prime": E_ab_prime,
-        "E_a_prime_b": E_a_prime_b,
-        "E_a_prime_b_prime": E_a_prime_b_prime,
-        "S": S,
+    metadata = {
         "intercept_probability": intercept_probability,
-        "shots": shots,
     }
-    chsh_summary = summarize_chsh_result(chsh_result)
-    chsh_result.update(chsh_summary)
 
-    return chsh_result
+    return build_chsh_result(
+        E_ab,
+        E_ab_prime,
+        E_a_prime_b,
+        E_a_prime_b_prime,
+        S,
+        shots,
+        extra_metadata=metadata,
+    )
 
 
 def prepare_classically_correlated_pair(circuit, source_bit):
@@ -745,10 +659,7 @@ def run_chsh_counts_with_classical_source(
 
 def run_chsh_experiment_with_classical_source(shots=1000, seed=None):
     """Simula CHSH con una sorgente classicamente correlata."""
-    a = 0
-    a_prime = np.pi / 2
-    b = np.pi / 4
-    b_prime = -np.pi / 4
+    a, a_prime, b, b_prime = get_chsh_angles()
 
     if seed is None:
         seed_ab = None
@@ -793,18 +704,18 @@ def run_chsh_experiment_with_classical_source(shots=1000, seed=None):
     )
     E_a_prime_b_prime = compute_correlation_from_counts(counts_a_prime_b_prime)
 
-    S = E_ab + E_ab_prime + E_a_prime_b - E_a_prime_b_prime
+    S = compute_chsh_s(E_ab, E_ab_prime, E_a_prime_b, E_a_prime_b_prime)
 
-    chsh_result = {
-        "E_ab": E_ab,
-        "E_ab_prime": E_ab_prime,
-        "E_a_prime_b": E_a_prime_b,
-        "E_a_prime_b_prime": E_a_prime_b_prime,
-        "S": S,
-        "shots": shots,
+    metadata = {
         "source_type": "classical_correlated",
     }
-    chsh_summary = summarize_chsh_result(chsh_result)
-    chsh_result.update(chsh_summary)
 
-    return chsh_result
+    return build_chsh_result(
+        E_ab,
+        E_ab_prime,
+        E_a_prime_b,
+        E_a_prime_b_prime,
+        S,
+        shots,
+        extra_metadata=metadata,
+    )

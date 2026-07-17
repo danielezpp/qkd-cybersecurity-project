@@ -1,5 +1,5 @@
 """
-Funzioni semplici per l'attacco intercept-resend di Eve su BB84.
+Funzioni semplici per attacchi intercept-resend.
 """
 
 import numpy as np
@@ -7,9 +7,11 @@ from qiskit import QuantumCircuit
 from qiskit_aer import AerSimulator
 
 try:
-    from bb84 import check_basis, measure_bb84_state, prepare_bb84_state
+    from qkd_core import check_basis, check_bit
+    from bb84 import measure_bb84_state
 except ImportError:
-    from .bb84 import check_basis, measure_bb84_state, prepare_bb84_state
+    from .qkd_core import check_basis, check_bit
+    from .bb84 import measure_bb84_state
 
 
 def choose_eve_basis(seed=None):
@@ -20,10 +22,27 @@ def choose_eve_basis(seed=None):
     return str(eve_basis)
 
 
+def prepare_single_qubit_from_bit_basis(circuit, bit, basis, qubit=0):
+    """Prepara un qubit a partire da bit e base."""
+    check_bit(bit)
+    check_basis(basis)
+
+    if basis == "Z":
+        if bit == 1:
+            circuit.x(qubit)
+
+    if basis == "X":
+        if bit == 1:
+            circuit.x(qubit)
+        circuit.h(qubit)
+
+    return circuit
+
+
 def eve_measure(alice_bit, alice_basis, eve_basis):
     """Misura il qubit di Alice nella base scelta da Eve."""
     circuit = QuantumCircuit(1, 1)
-    prepare_bb84_state(circuit, alice_bit, alice_basis)
+    prepare_single_qubit_from_bit_basis(circuit, alice_bit, alice_basis)
     measure_bb84_state(circuit, eve_basis)
 
     simulator = AerSimulator()
