@@ -25,6 +25,8 @@ Thumbs.db
 # Generated results
 results/figures/*
 results/tables/*
+results/circuits/*
+results_inventory.md
 
 .agents/
 
@@ -33,4 +35,5 @@ results/tables/*
 .matplotlib-cache/
 
 src.zip
+
 
