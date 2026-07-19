@@ -1,7 +1,3 @@
-"""
-Funzioni semplici per simulare rumore bit-flip in BB84.
-"""
-
 from qiskit import QuantumCircuit
 from qiskit_aer import AerSimulator
 
@@ -72,7 +68,6 @@ def run_bb84_round_with_bit_flip_noise(
     result = simulator.run(circuit, shots=1).result()
     counts = result.get_counts(circuit)
 
-    # Con shots=1 Bob ottiene un solo bit.
     for measured_bit in counts:
         bob_bit = int(measured_bit)
 

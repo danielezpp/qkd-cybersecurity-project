@@ -1,7 +1,3 @@
-"""
-Funzioni semplici per attacchi intercept-resend.
-"""
-
 import numpy as np
 from qiskit import QuantumCircuit
 from qiskit_aer import AerSimulator
@@ -49,7 +45,7 @@ def eve_measure(alice_bit, alice_basis, eve_basis):
     result = simulator.run(circuit, shots=1).result()
     counts = result.get_counts(circuit)
 
-    # Con un solo shot Eve ottiene un solo bit.
+    
     for measured_bit in counts:
         eve_bit = int(measured_bit)
 
