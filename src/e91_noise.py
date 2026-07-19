@@ -1,7 +1,3 @@
-"""
-Funzioni didattiche per simulare rumore nel protocollo E91.
-"""
-
 from qiskit import QuantumCircuit
 from qiskit_aer import AerSimulator
 

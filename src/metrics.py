@@ -1,7 +1,3 @@
-"""
-Metriche comuni per i protocolli QKD simulati.
-"""
-
 import numpy as np
 
 

@@ -1,7 +1,3 @@
-"""
-Funzioni di visualizzazione per i risultati QKD.
-"""
-
 from pathlib import Path
 
 

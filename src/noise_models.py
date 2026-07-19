@@ -1,7 +1,3 @@
-"""
-Modelli di rumore comuni per le simulazioni QKD.
-"""
-
 import numpy as np
 from qiskit_aer.noise import NoiseModel, amplitude_damping_error, pauli_error
 

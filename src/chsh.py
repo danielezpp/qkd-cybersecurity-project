@@ -1,7 +1,3 @@
-"""
-Funzioni comuni per gli esperimenti CHSH.
-"""
-
 import numpy as np
 
 try:
