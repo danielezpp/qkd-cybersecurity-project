@@ -12,6 +12,8 @@ except ImportError:
 
 def choose_eve_basis(seed=None):
     """Sceglie casualmente la base di Eve."""
+    # Eve non conosce la base di Alice: nel modello intercept-resend
+    # sceglie casualmente tra le stesse due basi del protocollo.
     rng = np.random.default_rng(seed)
     eve_basis = rng.choice(["Z", "X"])
 
@@ -23,6 +25,8 @@ def prepare_single_qubit_from_bit_basis(circuit, bit, basis, qubit=0):
     check_bit(bit)
     check_basis(basis)
 
+    # Il bit misurato e la base scelta fissano lo stato che Eve
+    # preparerebbe prima di reinviarlo a Bob.
     if basis == "Z":
         if bit == 1:
             circuit.x(qubit)
@@ -37,6 +41,8 @@ def prepare_single_qubit_from_bit_basis(circuit, bit, basis, qubit=0):
 
 def eve_measure(alice_bit, alice_basis, eve_basis):
     """Misura il qubit di Alice nella base scelta da Eve."""
+    # La misura di Eve trasforma lo stato quantistico in un bit classico,
+    # introducendo disturbo quando la base scelta non coincide con Alice.
     circuit = QuantumCircuit(1, 1)
     prepare_single_qubit_from_bit_basis(circuit, alice_bit, alice_basis)
     measure_bb84_state(circuit, eve_basis)
@@ -61,6 +67,8 @@ def eve_intercept_resend(alice_bit, alice_basis, eve_basis=None, seed=None):
 
     eve_bit = eve_measure(alice_bit, alice_basis, eve_basis)
 
+    # Nel passo di reinvio basta conservare bit e base di Eve:
+    # Bob ricevera un nuovo qubit coerente con questi valori.
     return {
         "eve_basis": eve_basis,
         "eve_bit": eve_bit,

@@ -22,6 +22,8 @@ except ImportError:
 
 def prepare_bell_phi_plus(circuit):
     """Prepara lo stato di Bell Phi+."""
+    # Stato di Bell Phi+: H crea sovrapposizione sul primo qubit,
+    # CNOT trasferisce la correlazione quantistica al secondo.
     circuit.h(0)
     circuit.cx(0, 1)
 
@@ -32,6 +34,8 @@ def measure_e91_qubit(circuit, basis, qubit, cbit):
     """Misura un qubit nella base scelta."""
     check_basis(basis)
 
+    # Come in BB84, la misura in base X viene ricondotta alla
+    # misura computazionale tramite un gate H.
     if basis == "X":
         circuit.h(qubit)
 
@@ -66,6 +70,8 @@ def _run_e91_round(
         if intercept_probability < 0.0 or intercept_probability > 1.0:
             raise ValueError("intercept_probability deve essere tra 0.0 e 1.0.")
 
+        # Eve intercetta solo una frazione dei round: quando non agisce,
+        # la coppia entangled viene misurata come nel protocollo ideale.
         rng = np.random.default_rng(seed)
         eve_intercepted = rng.random() < intercept_probability
 
@@ -136,6 +142,8 @@ def _run_e91_round(
             "eve_bit": eve_bit,
         }
 
+    # Scenario ideale o classico: la sorgente prepara la coppia,
+    # poi Alice e Bob misurano localmente i due qubit ricevuti.
     if source_mode == "entangled":
         circuit = QuantumCircuit(2, 2)
         prepare_bell_phi_plus(circuit)
@@ -240,6 +248,8 @@ def _run_e91_protocol(
         )
         keep = alice_basis == bob_basis
 
+        # Sifting E91: anche con entanglement, la chiave usa solo
+        # i round in cui le basi di Alice e Bob coincidono.
         if source_mode == "classical":
             round_number = i
         else:
@@ -322,6 +332,8 @@ def measure_in_angle(circuit, angle, qubit, cbit):
 
 def run_chsh_counts(angle_a, angle_b, shots=1000, seed=None):
     """Esegue una misura CHSH per una coppia di angoli."""
+    # CHSH usa la stessa sorgente entangled di E91, ma misura i qubit
+    # lungo direzioni ruotate invece che solo nelle basi Z e X.
     circuit = QuantumCircuit(2, 2)
     prepare_bell_phi_plus(circuit)
     measure_in_angle(circuit, angle_a, qubit=0, cbit=0)
@@ -420,6 +432,8 @@ def run_chsh_counts_with_eve(
             alice_bit = int(measured_bits[-1])
             eve_bit = int(measured_bits[-2])
 
+            # Dopo la misura di Eve, Bob riceve un nuovo qubit classico
+            # rispetto alla base di Eve: la correlazione entangled e' persa.
             bob_circuit = QuantumCircuit(1, 1)
             prepare_single_qubit_from_bit_basis(
                 bob_circuit,
@@ -474,7 +488,8 @@ def prepare_classically_correlated_pair(circuit, source_bit):
     if source_bit not in (0, 1):
         raise ValueError("source_bit deve essere 0 oppure 1.")
 
-    # Questa preparazione crea correlazione classica, non entanglement.
+    # Sorgente classica: i bit sono uguali, ma non nasce alcuna
+    # sovrapposizione entangled tra i due qubit.
     if source_bit == 1:
         circuit.x(0)
         circuit.x(1)

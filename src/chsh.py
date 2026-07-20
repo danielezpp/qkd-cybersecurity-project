@@ -18,6 +18,8 @@ except ImportError:
 
 def get_chsh_angles():
     """Restituisce gli angoli standard usati nel test CHSH."""
+    # Questi quattro angoli sono scelti per ottenere la violazione
+    # massima ideale dello stato di Bell nel test CHSH.
     a = 0
     a_prime = np.pi / 2
     b = np.pi / 4
@@ -31,6 +33,8 @@ def compute_correlation_from_counts(counts):
     total_shots = 0
     weighted_sum = 0
 
+    # Correlazione CHSH: esiti uguali contribuiscono +1,
+    # esiti diversi contribuiscono -1.
     for bitstring in counts:
         count = counts[bitstring]
 
@@ -57,6 +61,8 @@ def compute_correlation_from_counts(counts):
 
 def compute_chsh_s(E_ab, E_ab_prime, E_a_prime_b, E_a_prime_b_prime):
     """Calcola il parametro S del test CHSH."""
+    # Combinazione CHSH delle quattro correlazioni: il confronto con
+    # il limite classico 2 indica se le correlazioni sono non classiche.
     S = E_ab + E_ab_prime + E_a_prime_b - E_a_prime_b_prime
 
     return S
@@ -106,6 +112,8 @@ def run_chsh_experiment_from_counts_function(
     """Esegue un esperimento CHSH usando una funzione di conteggio."""
     a, a_prime, b, b_prime = get_chsh_angles()
 
+    # Ogni correlazione usa una diversa coppia di angoli; i seed
+    # separati rendono riproducibili i quattro setting sperimentali.
     if seed is None:
         seed_ab = None
         seed_ab_prime = None

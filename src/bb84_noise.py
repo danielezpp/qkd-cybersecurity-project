@@ -52,6 +52,9 @@ def run_bb84_round_with_bit_flip_noise(
 
     circuit = QuantumCircuit(1, 1)
     prepare_bb84_state(circuit, alice_bit, alice_basis)
+
+    # Il rumore bit-flip viene inserito tra preparazione di Alice
+    # e misura di Bob, cioe nel tratto di canale quantistico.
     circuit, noise_applied = apply_bit_flip_noise(
         circuit,
         0,
@@ -154,6 +157,9 @@ def run_bb84_round_with_amplitude_damping(
 
     circuit = QuantumCircuit(1, 1)
     prepare_bb84_state(circuit, alice_bit, alice_basis, qubit=0)
+
+    # Il gate id rappresenta il passaggio nel canale: il NoiseModel
+    # applica qui l'amplitude damping prima della misura di Bob.
     circuit.barrier()
     circuit.id(0)
     circuit.barrier()
@@ -259,6 +265,8 @@ def run_bb84_protocol_with_jc_amplitude_damping(
     if distance_km < 0:
         raise ValueError("distance_km deve essere maggiore o uguale a 0.")
 
+    # Jaynes-Cummings fornisce una probabilita di damping dipendente
+    # dalla distanza, poi riusata nel modello amplitude damping BB84.
     damping_probability = compute_jc_damping_probability_from_distance(
         distance_km,
         attenuation_db_per_km=attenuation_db_per_km,

@@ -31,6 +31,8 @@ def prepare_bb84_state(circuit, bit, basis, qubit=0):
     check_bit(bit)
     check_basis(basis)
 
+    # Codifica BB84: bit e base di Alice determinano quale stato
+    # tra |0>, |1>, |+> e |-> viene inviato nel canale.
     if basis == "Z":
         if bit == 1:
             circuit.x(qubit)
@@ -47,7 +49,8 @@ def measure_bb84_state(circuit, basis, qubit=0, cbit=0):
     """Misura un qubit nella base scelta."""
     check_basis(basis)
 
-    # Per misurare in base X, prima riportiamo lo stato nella base Z.
+    # Misura in base X: H riporta la base diagonale nella base
+    # computazionale, dove Qiskit applica la misura standard.
     if basis == "X":
         circuit.h(qubit)
 
@@ -70,6 +73,8 @@ def _run_bb84_round(
     check_basis(bob_basis)
 
     if attack_mode is None:
+        # Round ideale: Alice prepara il qubit e Bob lo misura
+        # direttamente nella propria base.
         circuit = QuantumCircuit(1, 1)
         prepare_bb84_state(circuit, alice_bit, alice_basis)
         measure_bb84_state(circuit, bob_basis)
@@ -99,6 +104,7 @@ def _run_bb84_round(
     eve_intercepted = rng.random() < intercept_probability
 
     if not eve_intercepted:
+        # Se Eve non intercetta, il round torna al caso BB84 ideale.
         bob_bit = _run_bb84_round(alice_bit, alice_basis, bob_basis)
         return {
             "alice_bit": alice_bit,
@@ -114,6 +120,8 @@ def _run_bb84_round(
     eve_basis = eve_result["eve_basis"]
     eve_bit = eve_result["eve_bit"]
 
+    # Intercept-resend: Bob non riceve piu lo stato originale di Alice,
+    # ma un nuovo qubit preparato da Eve dopo la propria misura.
     circuit = QuantumCircuit(1, 1)
     prepare_bb84_state(circuit, eve_bit, eve_basis)
     measure_bb84_state(circuit, bob_basis)
@@ -189,6 +197,8 @@ def _run_bb84_protocol(
         )
         keep = alice_basis == bob_basis
 
+        # Sifting: Alice e Bob mantengono solo i round in cui
+        # hanno usato la stessa base.
         if attack_mode is None:
             result = {
                 "round": i + 1,

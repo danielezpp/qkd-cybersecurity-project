@@ -51,6 +51,8 @@ def get_noisy_qubits(channel_mode):
     """Restituisce i qubit attraversati dal canale rumoroso."""
     check_channel_mode(channel_mode)
 
+    # one_arm modella rumore solo sul braccio di Bob; two_arm
+    # distribuisce il rumore su entrambi i qubit entangled.
     if channel_mode == "one_arm":
         return [1]
 
@@ -61,6 +63,8 @@ def insert_channel_identity_gates(circuit, channel_mode):
     """Inserisce gate id sui qubit attraversati dal canale."""
     noisy_qubits = get_noisy_qubits(channel_mode)
 
+    # Gli id segnano il punto del canale in cui il NoiseModel
+    # deve applicare il rumore prima delle misure.
     for qubit in noisy_qubits:
         circuit.id(qubit)
 
@@ -91,6 +95,9 @@ def _run_noisy_e91_round(
 
     circuit = QuantumCircuit(2, 2)
     prepare_bell_phi_plus(circuit)
+
+    # Il rumore agisce dopo la distribuzione della coppia entangled
+    # e prima delle misure locali di Alice e Bob.
     insert_channel_identity_gates(circuit, channel_mode)
     measure_e91_qubit(circuit, alice_basis, qubit=0, cbit=0)
     measure_e91_qubit(circuit, bob_basis, qubit=1, cbit=1)
@@ -189,6 +196,9 @@ def _run_noisy_chsh_counts(
 
     circuit = QuantumCircuit(2, 2)
     prepare_bell_phi_plus(circuit)
+
+    # Anche nel test CHSH il canale rumoroso degrada la coppia
+    # entangled prima delle misure ruotate.
     insert_channel_identity_gates(circuit, channel_mode)
     measure_in_angle(circuit, angle_a, qubit=0, cbit=0)
     measure_in_angle(circuit, angle_b, qubit=1, cbit=1)
@@ -216,6 +226,8 @@ def run_e91_round_with_bit_flip_noise(
     """Simula un round E91 con rumore bit-flip."""
     check_probability(noise_probability)
 
+    # Bit-flip su E91: il gate X probabilistico puo rompere
+    # la correlazione tra i risultati di Alice e Bob.
     noise_model = build_bit_flip_noise_model(noise_probability)
     metadata = {
         "noise_type": "bit_flip",
@@ -316,6 +328,8 @@ def run_e91_round_with_amplitude_damping(
     """Simula un round E91 con amplitude damping."""
     check_probability(damping_probability)
 
+    # Amplitude damping su E91: il canale dissipativo riduce la
+    # qualita delle correlazioni, osservabile anche tramite CHSH.
     noise_model = build_amplitude_damping_noise_model(damping_probability)
     metadata = {
         "noise_type": "amplitude_damping",
@@ -419,6 +433,8 @@ def compute_e91_jc_channel_parameters(
 
     check_channel_mode(channel_mode)
 
+    # Il modello distanza separa il caso one_arm dal caso two_arm:
+    # cambia quali bracci accumulano damping durante la propagazione.
     if channel_mode == "one_arm":
         arm_distance_alice_km = 0.0
         arm_distance_bob_km = distance_km
@@ -480,6 +496,8 @@ def run_e91_round_with_jc_amplitude_damping(
         fiber_speed_km_s=fiber_speed_km_s,
     )
 
+    # JC e' trattato come specializzazione dell'amplitude damping:
+    # prima si calcola gamma dalla distanza, poi si usa il canale standard.
     round_result = run_e91_round_with_amplitude_damping(
         alice_basis,
         bob_basis,
